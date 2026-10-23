@@ -127,9 +127,9 @@ const bump = (u, v, u0, v0, su, sv) => Math.exp(-(((u - u0) / su) ** 2) - (((v -
 function headPoint(u, v, mouth) {
   let w;
   if (v < -0.15) w = 0.78 * Math.sqrt(Math.max(0, 1 - ((v + 0.15) / 0.85) ** 2));
-  else w = 0.78 - 0.05 * smooth(-0.15, 0.3, v) - 0.36 * smooth(0.35, 1.08, v) ** 1.3;
+  else w = 0.79 - 0.04 * smooth(-0.15, 0.3, v) - 0.33 * smooth(0.38, 1.1, v) ** 1.4;
   const front = Math.max(0, Math.cos(u));
-  let x = w * Math.sin(u);
+  let x = w * 1.07 * Math.sin(u);
   let z = w * 1.12 * Math.cos(u);
   let y = v * 1.25;
 
@@ -141,55 +141,117 @@ function headPoint(u, v, mouth) {
   z += 0.035 * bump(u, v, 0, 0.53, 0.26, 0.04) + 0.03 * bump(u, v, 0, 0.66, 0.24, 0.04);          // lips
   z += 0.05 * bump(u, v, 0, 0.92, 0.3, 0.08);                                                       // chin
   // open mouth: everything below the lips drops a little (jaw)
-  y += mouth * 0.13 * smooth(0.55, 0.62, v) * Math.exp(-((u / 0.9) ** 2)) * front;
+  y += mouth * 0.12 * smooth(0.596, 0.61, v) * Math.exp(-((u / 0.9) ** 2)) * front;
   return [x, y, z];
 }
 
+// Plexus layer (points on the head joined by thin lines), fixed once so it doesn't flicker.
+const ANCHORS = Array.from({ length: 340 }, () => ({
+  u: (Math.random() * 2 - 1) * 1.5,
+  v: -0.95 + Math.random() * 1.88,
+  seed: Math.random() * TAU,
+}));
+const LINKS = [];
+for (let i = 0; i < ANCHORS.length; i++) {
+  for (let j = i + 1; j < ANCHORS.length; j++) {
+    const du = (ANCHORS[i].u - ANCHORS[j].u) * 0.8, dv = ANCHORS[i].v - ANCHORS[j].v;
+    if (du * du + dv * dv < 0.018) LINKS.push([i, j]);
+  }
+}
+
 function drawFace(c, t, rgba, light, open, blink) {
-  const S = 205;  // head units -> canvas units
-  const yaw = 0.32 * Math.sin(t * 0.33) + 0.08 * Math.sin(t * 0.81);
+  const S = 228;  // head units -> canvas units
+  const yaw = 0.3 * Math.sin(t * 0.33) + 0.07 * Math.sin(t * 0.81);
   const pitch = -0.06 + 0.05 * Math.sin(t * 0.27);
   const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
   const project = ([x, y, z]) => {
     const x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
     const y2 = y * cp - z1 * sp, z2 = y * sp + z1 * cp;
     const f = 1 / (1 - z2 * 0.12);
-    return [c + x1 * S * f, c + (y2 + 0.05) * S * f, z2];
+    return [c + x1 * S * f, c + (y2 + 0.04) * S * f, z2];
   };
   const P = (u, v) => project(headPoint(u, v, open));
+  const range = (n, f) => Array.from({ length: n + 1 }, (_, k) => f(k / n));
+  const violet = (a) => `rgba(175,95,255,${a})`;
 
-  // soft glow behind the head
-  const halo = ctx.createRadialGradient(c, c, 40, c, c, 280);
-  halo.addColorStop(0, rgba(0.35 + open * 0.2));
+  // HUD corner brackets around the head
+  ctx.strokeStyle = rgba(0.85);
+  ctx.lineWidth = 7;
+  for (const [sx_, sy_] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const x = c + sx_ * 300, y = c + sy_ * 300;
+    ctx.beginPath();
+    ctx.moveTo(x, y - sy_ * 80);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x - sx_ * 80, y);
+    ctx.stroke();
+  }
+
+  // halo
+  const halo = ctx.createRadialGradient(c, c, 40, c, c, 300);
+  halo.addColorStop(0, rgba(0.32 + open * 0.2));
   halo.addColorStop(1, rgba(0));
   ctx.fillStyle = halo;
   ctx.beginPath();
-  ctx.arc(c, c, 280, 0, TAU);
+  ctx.arc(c, c, 300, 0, TAU);
   ctx.fill();
 
-  // grid: draw each short segment front-bright / back-dim
+  // silhouette: leftmost / rightmost projected point of each ring
+  const left = [], right = [];
+  for (let i = 0; i <= 32; i++) {
+    const v = -1 + (i / 32) * 2;
+    let lo = null, hi = null;
+    for (let j = 0; j < 48; j++) {
+      const p = P(-Math.PI + (j / 48) * TAU, v);
+      if (!lo || p[0] < lo[0]) lo = p;
+      if (!hi || p[0] > hi[0]) hi = p;
+    }
+    left.push(lo);
+    right.push(hi);
+  }
+  const silhouette = new Path2D();
+  [...left, ...right.reverse()].forEach(([x, y], i) => (i ? silhouette.lineTo(x, y) : silhouette.moveTo(x, y)));
+  silhouette.closePath();
+
+  // translucent glowing body
+  ctx.globalCompositeOperation = "lighter";
+  const body = ctx.createRadialGradient(c, c - 20, 20, c, c, 260);
+  body.addColorStop(0, rgba(0.32));
+  body.addColorStop(0.75, rgba(0.16));
+  body.addColorStop(1, rgba(0.3));
+  ctx.fillStyle = body;
+  ctx.fill(silhouette);
+
+  // scanlines across the head
+  ctx.save();
+  ctx.clip(silhouette);
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  for (let y = c - 300; y < c + 300; y += 6) ctx.fillRect(c - 300, y, 600, 2);
+  ctx.restore();
+
+  // dense grid
   const front = new Path2D(), back = new Path2D();
   const seg = (a, b) => { const path = a[2] + b[2] > 0 ? front : back; path.moveTo(a[0], a[1]); path.lineTo(b[0], b[1]); };
-  for (let i = 0; i <= 26; i++) {                 // horizontal rings
-    const v = -0.97 + (i / 26) * 1.94;
+  for (let i = 0; i <= 34; i++) {
+    const v = -0.97 + (i / 34) * 1.94;
     let prev = P(-Math.PI, v);
-    for (let j = 1; j <= 72; j++) {
-      const cur = P(-Math.PI + (j / 72) * TAU, v);
+    for (let j = 1; j <= 80; j++) {
+      const cur = P(-Math.PI + (j / 80) * TAU, v);
       seg(prev, cur);
       prev = cur;
     }
   }
-  for (let i = 0; i < 32; i++) {                  // vertical meridians
-    const u = -Math.PI + (i / 32) * TAU;
+  for (let i = 0; i < 40; i++) {
+    const u = -Math.PI + (i / 40) * TAU;
     let prev = P(u, -1);
-    for (let j = 1; j <= 44; j++) {
-      const cur = P(u, -1 + (j / 44) * 2);
+    for (let j = 1; j <= 48; j++) {
+      const cur = P(u, -1 + (j / 48) * 2);
       seg(prev, cur);
       prev = cur;
     }
   }
-  for (const side of [-1, 1]) {                   // ears: two nested loops on each side
-    for (const depth of [0.13, 0.07]) {
+  for (const side of [-1, 1]) {                    // ears
+    for (const depth of [0.14, 0.08]) {
       let prev = null;
       for (let j = 0; j <= 24; j++) {
         const k = j / 24, v = -0.12 + k * 0.5;
@@ -202,51 +264,87 @@ function drawFace(c, t, rgba, light, open, blink) {
     }
   }
   ctx.globalCompositeOperation = "lighter";
-  ctx.lineWidth = 1.1;
-  ctx.strokeStyle = rgba(0.12);
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = rgba(0.1);
   ctx.stroke(back);
-  ctx.lineWidth = 1.5;
-  ctx.strokeStyle = light(0.55 + open * 0.25);
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = light(0.42 + open * 0.2);
   ctx.stroke(front);
 
-  const curve = (pts, width, alpha, close) => {
+  // plexus: twinkling points joined by thin violet lines
+  const pts = ANCHORS.map((a) => P(a.u, a.v));
+  ctx.beginPath();
+  for (const [i, j] of LINKS) {
+    if (pts[i][2] < 0.05 || pts[j][2] < 0.05) continue;
+    ctx.moveTo(pts[i][0], pts[i][1]);
+    ctx.lineTo(pts[j][0], pts[j][1]);
+  }
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = violet(0.42 + open * 0.2);
+  ctx.stroke();
+  const bright = new Path2D(), dim = new Path2D();
+  ANCHORS.forEach((a, i) => {
+    const [x, y, z] = pts[i];
+    if (z < 0) return;
+    const tw = Math.sin(t * 2.4 + a.seed);
+    (tw > 0.3 ? bright : dim).rect(x - 2, y - 2, 4, 4);
+  });
+  ctx.fillStyle = light(0.95);
+  ctx.fill(bright);
+  ctx.fillStyle = rgba(0.55);
+  ctx.fill(dim);
+
+  const curve = (pts_, width, alpha, close) => {
     ctx.beginPath();
-    pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    pts_.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
     if (close) ctx.closePath();
     ctx.lineWidth = width;
     ctx.strokeStyle = light(alpha);
     ctx.stroke();
   };
-  const range = (n, f) => Array.from({ length: n + 1 }, (_, k) => f(k / n));
 
-  // bright face outline (forehead arc, cheeks, chin)
-  const outline = [
+  // bright face outline
+  curve([
     ...range(24, (k) => P(-0.95, 0.9 - k * 1.45)),
     ...range(24, (k) => P(-0.95 + k * 1.9, -0.55 - Math.sin(k * Math.PI) * 0.1)),
     ...range(24, (k) => P(0.95, -0.55 + k * 1.45)),
     ...range(16, (k) => P(0.95 - k * 1.9, 0.9 + Math.sin(k * Math.PI) * 0.06)),
-  ];
-  curve(outline, 4, 0.85, true);
+  ], 4, 0.9, true);
 
-  // eyes (almond shapes, blinking)
+  // closed almond eyes with a lid crease, blinking
   for (const side of [-1, 1]) {
-    const u0 = side * 0.34, open_ = 0.045 * (1 - blink) + 0.004;
-    const upper = range(16, (k) => P(u0 - 0.13 + k * 0.26, 0.0 - Math.sin(k * Math.PI) * open_));
-    const lower = range(16, (k) => P(u0 + 0.13 - k * 0.26, 0.0 + Math.sin(k * Math.PI) * open_ * 0.7));
-    curve([...upper, ...lower], 3, 0.95, true);
+    const u0 = side * 0.34, lid = 0.05 * (1 - blink) + 0.006;
+    const upper = range(18, (k) => P(u0 - 0.15 + k * 0.3, 0.0 - Math.sin(k * Math.PI) * lid));
+    const lower = range(18, (k) => P(u0 + 0.15 - k * 0.3, 0.0 + Math.sin(k * Math.PI) * lid * 0.6));
+    curve([...upper, ...lower], 3.2, 0.95, true);
+    curve(range(14, (k) => P(u0 - 0.12 + k * 0.24, -0.06 - Math.sin(k * Math.PI) * 0.025)), 1.6, 0.45);
   }
 
-  // nose tip and nostrils
-  curve(range(16, (k) => P(-0.09 + k * 0.18, 0.4 + Math.sin(k * Math.PI) * 0.03)), 2.5, 0.85);
-  curve(range(10, (k) => P(-0.04 + Math.sin(k * Math.PI) * 0.01, 0.12 + k * 0.26)), 1.5, 0.4);
+  // nose: bright arch over the tip with the nostril base
+  curve([
+    ...range(16, (k) => P(-0.1 + k * 0.2, 0.43 - Math.sin(k * Math.PI) * 0.11)),
+    ...range(8, (k) => P(0.1 - k * 0.2, 0.43 + Math.sin(k * Math.PI) * 0.012)),
+  ], 3.5, 0.95, true);
+  curve(range(10, (k) => P(-0.035, 0.12 + k * 0.2)), 1.4, 0.35);
 
-  // lips: one line when closed, two when the mouth opens
-  const lip = (dv) => range(20, (k) => {
-    const u = -0.2 + k * 0.4;
-    return P(u, 0.58 + dv * Math.sin(k * Math.PI));
+  // lips: cupid's bow on top, full lower lip; they part when Jarvis speaks
+  const topLip = range(22, (k) => {
+    const u = -0.22 + k * 0.44;
+    return P(u, 0.555 - 0.03 * Math.sin(k * Math.PI) + 0.014 * Math.exp(-((u / 0.05) ** 2)));
   });
-  curve(lip(-0.025), 2.5, 0.8);
-  if (open > 0.05) curve(lip(0.02 + open * 0.03).map((p, k) => [p[0], p[1] + open * 0.13 * S * Math.sin((k / 20) * Math.PI) * 0.6]), 2.5, 0.8);
+  const upperLine = range(22, (k) => P(0.22 - k * 0.44, 0.594 + 0.006 * Math.sin(k * Math.PI)));
+  const lowerLine = range(22, (k) => P(-0.22 + k * 0.44, 0.612 - 0.004 * Math.sin(k * Math.PI)));
+  const bottomLip = range(22, (k) => P(0.22 - k * 0.44, 0.612 + 0.05 * Math.sin(k * Math.PI)));
+  if (open > 0.04) {
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "rgba(10,0,8,0.75)";
+    ctx.beginPath();
+    [...upperLine, ...lowerLine].forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.fill();
+    ctx.globalCompositeOperation = "lighter";
+  }
+  curve([...topLip, ...upperLine], 2.6, 0.85, true);
+  curve([...lowerLine, ...bottomLip], 2.6, 0.85, true);
 
   // glowing nodes: forehead and cheeks
   for (const [u, v, phase] of [[0, -0.45, 0], [-0.46, 0.24, 1.7], [0.42, 0.3, 3.1]]) {
@@ -274,7 +372,8 @@ function blinkAmount(now) {
 }
 
 function drawReactor(now) {
-  const t = (now - t0) / 1000;
+  // (the first frame's timestamp can be earlier than t0; negative time would break the spray buckets)
+  const t = Math.max(0, (now - t0) / 1000);
   const dt = Math.min(0.05, (now - lastFrame) / 1000);
   lastFrame = now;
   const W = UNITS, c = W / 2;
@@ -320,7 +419,7 @@ function drawReactor(now) {
   // spray fading outwards, drawn in four alpha steps
   const sprayPaths = [new Path2D(), new Path2D(), new Path2D(), new Path2D()];
   for (const sp of SPRAY) {
-    const travel = (sp.r0 + t * 18 * sp.s * (1 + level * 3)) % 100;
+    const travel = Math.max(0, (sp.r0 + t * 18 * sp.s * (1 + level * 3)) % 100);
     const rad = 470 + travel;
     sprayPaths[Math.min(3, Math.floor(travel / 25))]
       .rect(c + Math.cos(sp.a + t * 0.02) * rad, c + Math.sin(sp.a + t * 0.02) * rad, 2, 2);
@@ -330,6 +429,7 @@ function drawReactor(now) {
     ctx.fill(path);
   });
 
+  if (config.avatar !== "face") {  // the face gets corner brackets instead of these rings
   // block ring
   const blocks = 60, gap = TAU / blocks;
   for (let i = 0; i < blocks; i++) {
@@ -347,7 +447,6 @@ function drawReactor(now) {
     ctx.stroke();
   }
 
-  if (config.avatar !== "face") {
     // honeycomb band
     ctx.strokeStyle = rgba(0.16 + level * 0.15);
     ctx.lineWidth = 1.2;
