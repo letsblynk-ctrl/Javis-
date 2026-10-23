@@ -60,7 +60,6 @@ def public_config():
         "has_brain": bool(cfg.get("anthropic_api_key")),
         "reactor_color": cfg.get("reactor_color", "cyan"),
         "avatar": cfg.get("avatar", "sphere"),
-        "face_style": cfg.get("face_style", "hologram"),
     }
 
 
