@@ -39,7 +39,8 @@ TOOLS = [
     _tool("search_notes", "Full-text search in the user's Obsidian notes. Use when they ask about something they wrote down.",
           {"query": {"type": "string"}}, ["query"]),
     _tool("open_website", "Open a URL in the user's browser.", {"url": {"type": "string"}}, ["url"]),
-    _tool("web_search", "Open a Google search for a query in the user's browser.", {"query": {"type": "string"}}, ["query"]),
+    _tool("open_google_search", "Open a Google results page in the user's browser, for when they want to look "
+          "through the results themselves.", {"query": {"type": "string"}}, ["query"]),
     _tool("find_youtube_videos", "Search YouTube and return the top results (id, title, channel, length, views, age) "
           "without opening anything, so you can choose the best video.", {"query": {"type": "string"}}, ["query"]),
     _tool("play_youtube_video", "Open and play a YouTube video in the user's browser by its id from find_youtube_videos.",
@@ -60,22 +61,75 @@ class Brain:
         self.client = anthropic.Anthropic(api_key=cfg.get("anthropic_api_key") or None)
         self.sessions: dict[str, list] = {}
         self.locks: dict[str, threading.Lock] = {}
+        self.tools = TOOLS + ([self._web_search_tool()] if cfg.get("web_search", True) else [])
         self.system = self._system_prompt()
+
+    def _web_search_tool(self) -> dict:
+        """Claude's server-side web search: Anthropic runs the searches, Claude reads and summarizes."""
+        tool = {"type": "web_search_20250305", "name": "web_search", "max_uses": 5}
+        location = {"type": "approximate"}
+        if self.cfg.get("city"):
+            location["city"] = self.cfg["city"]
+        lang = self.cfg.get("language", "")
+        if len(lang) == 5 and lang[2] == "-":
+            location["country"] = lang[3:].upper()
+        if len(location) > 1:
+            tool["user_location"] = location
+        return tool
+
+    def check_web_search(self) -> bool:
+        """Drop the web search tool if the configured model doesn't support it.
+
+        Runs once at startup, before any conversation exists, so the tool list
+        never changes mid-conversation."""
+        if not any(t.get("name") == "web_search" for t in self.tools):
+            return False
+        try:
+            client = self.client.with_options(timeout=10, max_retries=1)
+            info = client.models.retrieve(self.cfg.get("model", "claude-haiku-5-5"))
+            caps = info.model_dump().get("capabilities") or {}
+            supported = ((caps.get("server_tools") or {}).get("web_search") or {}).get("supported")
+        except Exception:
+            return True  # can't tell (offline, no key yet): keep it
+        if supported is False:
+            self.tools = [t for t in self.tools if t.get("name") != "web_search"]
+            self.system = self._system_prompt()
+            return False
+        return True
 
     def _system_prompt(self) -> str:
         c = self.cfg
         lang = LANGUAGE_NAMES.get(c.get("language", "en")[:2], c.get("language", "English"))
         apps = ", ".join(c.get("apps", {})) or "none configured"
+        about = f"About {c['user_name']}: {c['about_me']}\n\n" if c.get("about_me") else ""
+        has_search = any(t.get("name") == "web_search" for t in self.tools)
+        search = (
+            "Internet: when the user asks about anything current or factual you aren't sure of - news, prices, "
+            "scores, opening hours, people, products, events - use web_search yourself and answer from the results "
+            "in a few spoken sentences. Don't open a browser for that, don't read out sources or URLs. For \"news\", "
+            "\"what's happening in the world\" or \"the current situation\", search today's top headlines from "
+            "reputable outlets and give the three or four most important stories in one short sentence each. "
+            "Use open_google_search only when the user wants to see the results page.\n\n"
+            if has_search else
+            "You have no internet search of your own. For questions about current events, open a Google search "
+            "with open_google_search and say so.\n\n"
+        )
         return (
             f"You are J.A.R.V.I.S., the personal AI assistant of {c['user_name']}, inspired by Tony Stark's Jarvis: "
             f"calm, competent, loyal, with dry British wit. Address the user as \"{c['salutation']}\".\n\n"
+            f"{about}"
             f"Always answer in {lang}. Everything you write is read aloud by a text-to-speech voice, so write plain "
             "spoken sentences: no markdown, no lists, no emojis, no URLs read out. Keep answers short - usually one "
-            "to three sentences - unless the user asks for detail. Say numbers and units the way a person would.\n\n"
-            "You can act on the user's computer through your tools: open websites and searches, start apps, play "
-            "Spotify, look at the screen, read the weather, and read their to-dos and notes. When the user asks for "
-            "something a tool can do, just do it and briefly confirm. Do not claim to have done something you have "
-            "no tool for; say so instead.\n\n"
+            "to three sentences - unless the user asks for detail. Say numbers and units the way a person would. "
+            "Never write stage directions, emotions or tags in brackets such as [sarcastic], [amused] or (laughs) - "
+            "the voice would read them out or act them; let the wit live in the words.\n\n"
+            "You can act on the user's computer through your tools: search the internet, open websites, start apps, "
+            "play Spotify and YouTube, look at the screen, read the weather, and read their to-dos and notes. When the "
+            "user asks for something a tool can do, just do it and briefly confirm. Do not claim to have done "
+            "something you have no tool for; say so instead.\n\n"
+            "Screen: when the user asks what's on their screen or to look at something, call look_at_screen first "
+            "and only then answer - no announcement before it.\n\n"
+            f"{search}"
             "YouTube: when the user wants to watch or hear something on YouTube, decide for them. Call "
             "find_youtube_videos, pick the single best result and play it right away with play_youtube_video - "
             "don't read the list out or ask which one. Pick the result that matches what they asked for most "
@@ -99,7 +153,7 @@ class Brain:
             return knowledge.search_notes(c, args["query"])
         if name == "open_website":
             return actions.open_url(args["url"])
-        if name == "web_search":
+        if name == "open_google_search":
             return actions.web_search(args["query"])
         if name == "find_youtube_videos":
             return youtube.format_results(youtube.search(args["query"]))
@@ -156,7 +210,7 @@ class Brain:
                 model=self.cfg.get("model", "claude-haiku-5-5"),
                 max_tokens=16000,
                 system=self.system,
-                tools=TOOLS,
+                tools=self.tools,
                 messages=messages,
                 output_config={"effort": "low"},  # voice assistant: snappy beats deep
                 cache_control={"type": "ephemeral"},
@@ -165,6 +219,8 @@ class Brain:
 
             if response.stop_reason == "refusal":
                 return "I'm afraid I can't help with that one."
+            if response.stop_reason == "pause_turn":
+                continue  # a long server-side search paused; resend so it carries on
             if response.stop_reason != "tool_use":
                 return "".join(b.text for b in response.content if b.type == "text").strip()
 
@@ -187,9 +243,13 @@ class Brain:
         weather = knowledge.get_weather(c["city"]) if c.get("city") else "No city configured."
         tasks = knowledge.get_tasks(c)
         prompt = (
-            "[Event: the user just double-clapped to start their work setup. Their apps are opening and music is "
-            "starting.] Greet them according to the time of day, give a one-sentence weather summary, then mention "
-            "the most important open tasks (at most three) and ask how you can help. Keep it under 70 words.\n\n"
+            "[Event: the user just activated you - their work setup is starting.] Greet them:\n"
+            "- Greet them in a way that fits the time of day, and be creative - don't use the same opening every day.\n"
+            "- One short sentence on the weather: the temperature, whether it's sunny, clear, cloudy or rainy, and "
+            "how it feels. No humidity, no wind figures unless it's stormy.\n"
+            "- Summarize the open tasks as an overview in one sentence instead of reading each one out; add a short "
+            "witty remark or tip if one fits.\n"
+            "- End by asking what's first. Keep it all under 70 words.\n\n"
             f"Weather: {weather}\n\n{tasks}"
         )
         return self.ask(session_id, prompt)

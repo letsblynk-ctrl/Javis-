@@ -10,6 +10,7 @@ Run the setup as a conversation (in the user's language), don't make them run th
 
 1. Ask for, one or two at a time:
    - name, and how Jarvis should address them (e.g. "Sir"); speech language (`de-DE`, `en-US`, ...)
+   - one or two sentences about them (job, projects, habits) for `about_me`
    - Anthropic API key (console.anthropic.com) - the brain
    - ElevenLabs API key (elevenlabs.io) - the voice; optional voice ID (default `JBFqnCBsd6RMkjVDRZzb`)
    - Spotify link of the startup song
@@ -36,4 +37,7 @@ Run the setup as a conversation (in the user's language), don't make them run th
   turns (the brain restarts from a text recap instead). Put volatile info (time, weather) in user turns.
 - Replies are spoken: the system prompt asks for short, plain sentences without markdown.
 - New capability = add a tool schema to `TOOLS` and a branch in `Brain._run_tool`.
+- `web_search` is Claude's server-side tool (`web_search_20250305`); `Brain.check_web_search()` removes it at
+  startup if the model's `capabilities` say it's unsupported. Don't name a local tool `web_search`.
+- No `[sarcastic]`-style tags in replies - they get spoken. The system prompt forbids them.
 - Tests: `python -m pytest tests`.

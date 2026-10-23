@@ -26,6 +26,7 @@ def load_config() -> dict:
     defaults["startup_urls"] = []
     defaults["apps"] = {}
     defaults["spotify_track"] = ""
+    defaults["about_me"] = ""
 
     cfg = defaults
     if CONFIG_PATH.exists():

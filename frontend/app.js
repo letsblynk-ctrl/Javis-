@@ -133,7 +133,11 @@ async function handle(path, body, userText) {
   }
 }
 
-const send = (text) => handle("/api/chat", { text }, text);
+// "Jarvis activate" / "Jarvis, aktiviere dich" / "Jarvis wake up" -> the full greeting (weather + tasks).
+const ACTIVATE = /\bjarvis\b.{0,12}\b(activate|aktivier\w*|wake up|wach auf)\b/i;
+
+const send = (text) =>
+  ACTIVATE.test(text) ? handle("/api/greet", {}, text) : handle("/api/chat", { text }, text);
 
 // ---------- voice in (Chrome Web Speech API) ----------
 

@@ -18,6 +18,8 @@ FRONTEND = Path(__file__).resolve().parent / "frontend"
 
 cfg = load_config()
 brain = Brain(cfg)
+if cfg.get("anthropic_api_key") and not brain.check_web_search():
+    print(f"[jarvis] {cfg.get('model')} has no web search - Jarvis will open Google instead.")
 app = FastAPI(title="Jarvis")
 
 

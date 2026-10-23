@@ -98,3 +98,48 @@ def test_youtube_play_rejects_bad_ids(monkeypatch):
     assert "not a YouTube video ID" in youtube.play("https://evil.example")
     youtube.play("dQw4w9WgXcQ")
     assert opened == ["https://www.youtube.com/watch?v=dQw4w9WgXcQ"]
+
+
+def _brain(**overrides):
+    from jarvis.brain import Brain
+    from jarvis.config import load_config
+
+    cfg = load_config()
+    cfg.update(anthropic_api_key="test", user_name="Julian", city="Hamburg", language="de-DE", **overrides)
+    return Brain(cfg)
+
+
+def test_web_search_tool_and_prompt():
+    brain = _brain(about_me="KI-Berater")
+    search = [t for t in brain.tools if t.get("name") == "web_search"]
+    assert search and search[0]["type"] == "web_search_20250305"
+    assert search[0]["user_location"] == {"type": "approximate", "city": "Hamburg", "country": "DE"}
+    assert len({t["name"] for t in brain.tools}) == len(brain.tools)  # no name clashes
+    assert "About Julian: KI-Berater" in brain.system
+    assert "[sarcastic]" in brain.system and "use web_search yourself" in brain.system
+
+
+def test_web_search_dropped_when_model_lacks_it():
+    from types import SimpleNamespace as NS
+    from unittest import mock
+
+    brain = _brain()
+    info = NS(model_dump=lambda: {"capabilities": {"server_tools": {"web_search": {"supported": False}}}})
+    with mock.patch.object(type(brain.client.with_options(timeout=10, max_retries=1).models), "retrieve", return_value=info):
+        assert brain.check_web_search() is False
+    assert not any(t.get("name") == "web_search" for t in brain.tools)
+    assert "no internet search of your own" in brain.system
+
+
+def test_pause_turn_is_resumed():
+    from types import SimpleNamespace as NS
+    from unittest import mock
+
+    brain = _brain()
+    replies = iter([
+        NS(stop_reason="pause_turn", content=[NS(type="server_tool_use", id="s1", name="web_search")]),
+        NS(stop_reason="end_turn", content=[NS(type="text", text="Drei Schlagzeilen, Sir.")]),
+    ])
+    with mock.patch.object(brain.client.messages, "create", side_effect=lambda **kw: next(replies)) as create:
+        assert brain.ask("s", "Was gibt's Neues?") == "Drei Schlagzeilen, Sir."
+    assert create.call_count == 2

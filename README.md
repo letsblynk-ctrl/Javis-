@@ -3,9 +3,11 @@
 Your personal AI assistant, inspired by Iron Man's Jarvis.
 
 - **Clap twice** and your whole work setup starts: apps, websites, your Spotify song.
-- Jarvis **greets you** with the weather and your open tasks.
+- Jarvis **greets you** with the weather and your open tasks (also on the voice command "Jarvis activate").
 - **Talk freely** with Jarvis; he answers out loud (ElevenLabs voice).
-- Jarvis can **control your browser** (search Google or YouTube, open sites) and **start apps**.
+- **Internet & news:** ask anything current ("What's new in the world?", "When does the bakery close?").
+  Jarvis searches the web himself (Claude web search) and answers in a few sentences.
+- Jarvis can **control your browser** (open sites, Google or YouTube pages) and **start apps**.
 - **YouTube on command:** say "play the latest Tagesschau" or "put on some lofi" and Jarvis searches
   YouTube, picks the best video himself (official channels, newest for news, no reaction videos) and plays it.
 - Jarvis can **look at your screen** and describe it ("What's on my screen?", "Explain this error").
@@ -16,9 +18,15 @@ Your personal AI assistant, inspired by Iron Man's Jarvis.
                                          │
                                          ▼
  Chrome app window (orb UI) ◄──► local server (FastAPI) ◄──► Claude (brain + tools)
-   speech recognition (Chrome)            │                    weather · tasks · notes
-   voice playback                         └──► ElevenLabs      browser · apps · screenshot
+   speech recognition (Chrome)            │                    web search (runs at Anthropic)
+   voice playback                         │                    weather · tasks · notes · YouTube
+                                          └──► ElevenLabs      browser · apps · screenshot
 ```
+
+Unlike the original video's template, this version uses Claude's native **tool use** instead of
+`[ACTION:...]` tags parsed out of the reply text, and Claude's **server-side web search** instead of
+driving a browser with Playwright. Nothing extra to install, and Jarvis can chain several steps
+(search, then open the best page) in one answer.
 
 ## Requirements
 
@@ -37,7 +45,7 @@ Your personal AI assistant, inspired by Iron Man's Jarvis.
 **Option B - by hand (Windows):** double-click `scripts\setup_windows.bat`. It creates a virtual
 environment, installs the dependencies and runs the setup wizard, which asks for:
 
-1. your name and how Jarvis should address you (e.g. "Sir")
+1. your name, how Jarvis should address you (e.g. "Sir") and a sentence about yourself
 2. Anthropic API key
 3. ElevenLabs API key
 4. the Spotify song for the startup
@@ -69,6 +77,8 @@ speaking the mic pauses so he doesn't hear himself.
 | Setting in `config.json` | What it does |
 |---|---|
 | `model` | Claude model. `claude-haiku-5-5` is fast and cheap; `claude-sonnet-5-5` is smarter but slower. |
+| `about_me` | Who you are and what you work on; Jarvis uses it to give relevant answers. |
+| `web_search` | `true` lets Jarvis search the web ($10 per 1,000 searches on top of tokens). `false` = he opens Google instead. |
 | `elevenlabs_voice_id` | Any voice from your ElevenLabs library. Default: "George" (British). |
 | `clap.threshold` | Peak level (0-1) a clap must reach. Raise it if music or typing triggers Jarvis. |
 | `clap.min_gap` / `max_gap` | Allowed time between the two claps in seconds. |

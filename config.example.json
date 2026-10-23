@@ -2,9 +2,11 @@
   "user_name": "Tony",
   "salutation": "Sir",
   "language": "de-DE",
+  "about_me": "AI consultant and automation builder. Works mostly in VS Code, records YouTube videos on Fridays.",
 
   "anthropic_api_key": "",
   "model": "claude-haiku-5-5",
+  "web_search": true,
 
   "elevenlabs_api_key": "",
   "elevenlabs_voice_id": "JBFqnCBsd6RMkjVDRZzb",
@@ -13,14 +15,16 @@
   "city": "Hamburg",
   "spotify_track": "https://open.spotify.com/track/2zYzyRzz6pRmhPzyfMEC8s",
   "startup_apps": [
-    "C:\\Users\\YOU\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe"
+    "C:\\Users\\YOU\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
+    "obsidian://open"
   ],
   "startup_urls": [
     "https://mail.google.com"
   ],
   "apps": {
     "vscode": "C:\\Users\\YOU\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
-    "spotify": "spotify:"
+    "spotify": "spotify:",
+    "obsidian": "obsidian://open"
   },
 
   "obsidian_vault": "",

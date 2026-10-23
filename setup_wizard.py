@@ -33,19 +33,23 @@ def ask_list(question: str, default: list) -> list:
 def main() -> None:
     base = json.loads((CONFIG_PATH if CONFIG_PATH.exists() else EXAMPLE_PATH).read_text(encoding="utf-8"))
     if not CONFIG_PATH.exists():
-        base.update(startup_apps=[], startup_urls=[], apps={}, user_name="", anthropic_api_key="", elevenlabs_api_key="")
+        base.update(startup_apps=[], startup_urls=[], apps={}, user_name="", about_me="",
+                    anthropic_api_key="", elevenlabs_api_key="")
 
     print("\n=== Jarvis setup ===  (press Enter to keep the value in brackets)\n")
     cfg = dict(base)
     cfg["user_name"] = ask("1. Your name", base.get("user_name", ""))
     cfg["salutation"] = ask("   How should Jarvis address you (e.g. Sir, Boss, your name)", base.get("salutation", "Sir"))
     cfg["language"] = ask("   Language code for speech (de-DE, en-US, en-GB, ...)", base.get("language", "de-DE"))
+    cfg["about_me"] = ask("   A sentence about you, so Jarvis knows who he works for (job, projects, habits)",
+                          base.get("about_me", ""))
     cfg["anthropic_api_key"] = ask("2. Anthropic API key (https://console.anthropic.com)", base.get("anthropic_api_key", ""), secret=True)
     cfg["elevenlabs_api_key"] = ask("3. ElevenLabs API key (https://elevenlabs.io) - empty = browser voice",
                                     base.get("elevenlabs_api_key", ""), secret=True)
     cfg["elevenlabs_voice_id"] = ask("   ElevenLabs voice ID", base.get("elevenlabs_voice_id", "JBFqnCBsd6RMkjVDRZzb"))
     cfg["spotify_track"] = ask("4. Spotify link of the song to play at startup (empty = none)", base.get("spotify_track", ""))
-    cfg["startup_apps"] = ask_list("5. Programs to start on double clap (full path to the .exe, or a URI like spotify:)",
+    cfg["startup_apps"] = ask_list("5. Programs to start on double clap (full path to the .exe, or a URI like "
+                                   "obsidian://open)",
                                    base.get("startup_apps", []))
     cfg["startup_urls"] = ask_list("6. Websites to open on double clap", base.get("startup_urls", []))
     cfg["city"] = ask("7. City for the weather", base.get("city", ""))
@@ -53,7 +57,10 @@ def main() -> None:
 
     apps = dict(base.get("apps", {}))
     for path in cfg["startup_apps"]:
-        name = path.replace("\\", "/").rsplit("/", 1)[-1].split(".")[0].lower()
+        if "://" in path:  # URI like obsidian://open -> nickname "obsidian"
+            name = path.split(":", 1)[0].lower()
+        else:
+            name = path.replace("\\", "/").rsplit("/", 1)[-1].split(".")[0].lower()
         apps.setdefault(name, path)
     cfg["apps"] = apps
 
@@ -73,9 +80,13 @@ def test_keys(cfg: dict) -> None:
 
     from jarvis import tts
 
+    from jarvis.brain import Brain
+
     try:
         anthropic.Anthropic(api_key=cfg["anthropic_api_key"] or None).models.retrieve(cfg.get("model", "claude-haiku-5-5"))
         print("  Anthropic: OK")
+        has_search = Brain(cfg).check_web_search()
+        print(f"  Web search: {'OK' if has_search else 'not supported by this model - Jarvis opens Google instead'}")
     except Exception as e:
         print(f"  Anthropic: FAILED - {e}")
     if cfg.get("elevenlabs_api_key"):
