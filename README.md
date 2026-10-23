@@ -82,6 +82,7 @@ speaking the mic pauses so he doesn't hear himself.
 | `model` | Claude model. `claude-haiku-5-5` is fast and cheap; `claude-sonnet-5-5` is smarter but slower. |
 | `about_me` | Who you are and what you work on; Jarvis uses it to give relevant answers. |
 | `web_search` | `true` lets Jarvis search the web ($10 per 1,000 searches on top of tokens). `false` = he opens Google instead. |
+| `reactor_color` | Color of the arc reactor in the HUD: `cyan` (default) or `pink`. |
 | `elevenlabs_voice_id` | Any voice from your ElevenLabs library. Default: "George" (British). |
 | `clap.threshold` | Peak level (0-1) a clap must reach. Raise it if music or typing triggers Jarvis. |
 | `clap.min_gap` / `max_gap` | Allowed time between the two claps in seconds. |

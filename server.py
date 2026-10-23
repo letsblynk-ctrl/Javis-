@@ -1,5 +1,6 @@
 """HTTP server: serves the Jarvis HUD and the chat / voice API."""
 
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -57,18 +58,29 @@ def public_config():
         "language": cfg["language"],
         "has_voice": bool(cfg.get("elevenlabs_api_key")),
         "has_brain": bool(cfg.get("anthropic_api_key")),
+        "reactor_color": cfg.get("reactor_color", "cyan"),
     }
 
 
-_weather_cache = {"at": 0.0, "data": None}
+_weather_cache = {"at": -1e9, "data": None, "refreshing": False}
 
 
-def _cached_weather():
-    """Weather for the HUD, refreshed at most every 10 minutes."""
-    if cfg.get("city") and time.monotonic() - _weather_cache["at"] > 600:
+def _refresh_weather():
+    try:
         data = knowledge.get_weather_data(cfg["city"], cfg.get("language", "en"))
         if data:
             _weather_cache.update(at=time.monotonic(), data=data)
+    finally:
+        _weather_cache["refreshing"] = False
+
+
+def _cached_weather():
+    """Weather for the HUD. Never blocks: a stale cache is refreshed in the background
+    (at most every 10 minutes) and the HUD picks it up on its next poll."""
+    stale = time.monotonic() - _weather_cache["at"] > 600
+    if cfg.get("city") and stale and not _weather_cache["refreshing"]:
+        _weather_cache["refreshing"] = True
+        threading.Thread(target=_refresh_weather, daemon=True).start()
     return _weather_cache["data"]
 
 

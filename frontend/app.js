@@ -18,13 +18,24 @@ try { sessionId = sessionStorage.getItem("jarvis-session"); } catch (_) {}
 
 const cv = $("reactor");
 const ctx = cv.getContext("2d");
-const COLORS = {
-  idle: [95, 225, 255],
-  listening: [120, 235, 255],
-  thinking: [255, 196, 92],
-  speaking: [170, 245, 255],
-  error: [255, 90, 79],
+// Reactor colors per state; "reactor_color" in config.json picks the palette.
+const PALETTES = {
+  cyan: {
+    idle: [95, 225, 255],
+    listening: [120, 235, 255],
+    thinking: [255, 196, 92],
+    speaking: [170, 245, 255],
+    error: [255, 90, 79],
+  },
+  pink: {
+    idle: [255, 64, 160],
+    listening: [255, 105, 185],
+    thinking: [255, 196, 92],
+    speaking: [255, 150, 210],
+    error: [255, 110, 60],
+  },
 };
+const COLORS = { ...PALETTES.cyan };
 let col = [...COLORS.idle];
 let level = 0;
 const t0 = performance.now();
@@ -272,6 +283,10 @@ async function loadHud() {
   try { hud = await (await fetch("/api/hud")).json(); } catch (_) { return; }
 
   const w = hud.weather;
+  if (!w && !loadHud.retried) {
+    loadHud.retried = true;  // weather is still loading on the server: ask again shortly
+    setTimeout(loadHud, 4000);
+  }
   if (w) {
     $("wCity").textContent = w.city;
     $("wTemp").textContent = Math.round(w.temp) + "°";
@@ -554,6 +569,8 @@ function endBoot() {
 
 (async function init() {
   try { config = await (await fetch("/api/config")).json(); } catch (_) {}
+  Object.assign(COLORS, PALETTES[config.reactor_color] || PALETTES.cyan);
+  col = [...COLORS.idle];
   $("stVoice").textContent = config.has_voice ? "ELEVENLABS" : "BROWSER";
   if (!config.has_brain) warn("Kein Anthropic-API-Key - bitte setup_wizard.py ausführen.");
 
