@@ -10,7 +10,7 @@ from datetime import datetime
 
 import anthropic
 
-from . import actions, knowledge, screen
+from . import actions, knowledge, screen, youtube
 
 MAX_MESSAGES = 60      # restart the conversation from a recap after this many messages
 MAX_TOOL_ROUNDS = 8    # safety stop for the tool loop
@@ -40,7 +40,12 @@ TOOLS = [
           {"query": {"type": "string"}}, ["query"]),
     _tool("open_website", "Open a URL in the user's browser.", {"url": {"type": "string"}}, ["url"]),
     _tool("web_search", "Open a Google search for a query in the user's browser.", {"query": {"type": "string"}}, ["query"]),
-    _tool("youtube_search", "Open a YouTube search for a query in the user's browser.", {"query": {"type": "string"}}, ["query"]),
+    _tool("find_youtube_videos", "Search YouTube and return the top results (id, title, channel, length, views, age) "
+          "without opening anything, so you can choose the best video.", {"query": {"type": "string"}}, ["query"]),
+    _tool("play_youtube_video", "Open and play a YouTube video in the user's browser by its id from find_youtube_videos.",
+          {"video_id": {"type": "string"}}, ["video_id"]),
+    _tool("youtube_search", "Open the YouTube results page for a query, for when the user wants to browse the results "
+          "themselves.", {"query": {"type": "string"}}, ["query"]),
     _tool("launch_app", "Start a program on the user's computer by its nickname (see the list of known apps) or path.",
           {"name": {"type": "string"}}, ["name"]),
     _tool("play_spotify", "Play a Spotify link (track, album or playlist URL). Leave link empty to play the user's startup song.",
@@ -71,6 +76,14 @@ class Brain:
             "Spotify, look at the screen, read the weather, and read their to-dos and notes. When the user asks for "
             "something a tool can do, just do it and briefly confirm. Do not claim to have done something you have "
             "no tool for; say so instead.\n\n"
+            "YouTube: when the user wants to watch or hear something on YouTube, decide for them. Call "
+            "find_youtube_videos, pick the single best result and play it right away with play_youtube_video - "
+            "don't read the list out or ask which one. Pick the result that matches what they asked for most "
+            "closely (exact song, episode or topic, in their language where that matters); among close matches prefer "
+            "the official or verified channel, then the more viewed, and for news or \"latest\" requests the newest. "
+            "Avoid live streams unless they asked for one or for continuous music, and avoid compilations or "
+            "reactions unless asked. If nothing fits, search again with a better query. Then say in one short sentence "
+            "what you're playing and from which channel. Only use youtube_search when they want to browse.\n\n"
             f"Home city: {c.get('city') or 'unknown'}. Known apps: {apps}."
         )
 
@@ -88,6 +101,10 @@ class Brain:
             return actions.open_url(args["url"])
         if name == "web_search":
             return actions.web_search(args["query"])
+        if name == "find_youtube_videos":
+            return youtube.format_results(youtube.search(args["query"]))
+        if name == "play_youtube_video":
+            return youtube.play(args["video_id"].strip())
         if name == "youtube_search":
             return actions.youtube_search(args["query"])
         if name == "launch_app":

@@ -61,3 +61,40 @@ def test_tasks_and_notes(tmp_path):
     tasks = knowledge.get_tasks(cfg)
     assert "Call Pepper" in tasks and "Fix suit" in tasks and "Done thing" not in tasks
     assert "palladium" in knowledge.search_notes(cfg, "arc reactor")
+
+
+def test_youtube_search_parsing(monkeypatch):
+    from jarvis import youtube
+
+    data = {"contents": [{"videoRenderer": {
+        "videoId": "dQw4w9WgXcQ",
+        "title": {"runs": [{"text": "Never Gonna Give You Up"}]},
+        "ownerText": {"runs": [{"text": "Rick Astley"}]},
+        "ownerBadges": [{"metadataBadgeRenderer": {"style": "BADGE_STYLE_TYPE_VERIFIED_ARTIST"}}],
+        "lengthText": {"simpleText": "3:33"},
+        "viewCountText": {"simpleText": "1,700,000,000 views"},
+        "publishedTimeText": {"simpleText": "15 years ago"},
+    }}, {"videoRenderer": {"videoId": "liveliveliv", "title": {"runs": [{"text": "Radio"}]}}}]}
+    html = "<script>var ytInitialData = " + __import__("json").dumps(data) + ";</script>"
+
+    class Resp:
+        text = html
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr(youtube.requests, "get", lambda *a, **k: Resp())
+    videos = youtube.search("rick")
+    assert [v["id"] for v in videos] == ["dQw4w9WgXcQ", "liveliveliv"]
+    assert videos[0]["verified"] and videos[1]["length"] == "LIVE"
+    text = youtube.format_results(videos)
+    assert "[dQw4w9WgXcQ] Never Gonna Give You Up - Rick Astley ✓ (3:33" in text
+
+
+def test_youtube_play_rejects_bad_ids(monkeypatch):
+    from jarvis import youtube
+
+    opened = []
+    monkeypatch.setattr(youtube.webbrowser, "open", opened.append)
+    assert "not a YouTube video ID" in youtube.play("https://evil.example")
+    youtube.play("dQw4w9WgXcQ")
+    assert opened == ["https://www.youtube.com/watch?v=dQw4w9WgXcQ"]

@@ -6,6 +6,8 @@ Your personal AI assistant, inspired by Iron Man's Jarvis.
 - Jarvis **greets you** with the weather and your open tasks.
 - **Talk freely** with Jarvis; he answers out loud (ElevenLabs voice).
 - Jarvis can **control your browser** (search Google or YouTube, open sites) and **start apps**.
+- **YouTube on command:** say "play the latest Tagesschau" or "put on some lofi" and Jarvis searches
+  YouTube, picks the best video himself (official channels, newest for news, no reaction videos) and plays it.
 - Jarvis can **look at your screen** and describe it ("What's on my screen?", "Explain this error").
 - Optional: reads to-dos and notes from your **Obsidian** vault.
 
