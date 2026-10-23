@@ -107,7 +107,7 @@ def open_jarvis_ui(cfg: dict, greet: bool) -> None:
         f"--user-data-dir={profile}",
         "--autoplay-policy=no-user-gesture-required",
         "--no-first-run",
-        "--window-size=520,760",
+        "--start-maximized",
     ])
 
 

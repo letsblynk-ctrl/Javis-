@@ -18,7 +18,8 @@ Run the setup as a conversation (in the user's language), don't make them run th
      `%LOCALAPPDATA%\Programs`, `C:\Program Files`) and confirm them with the user
    - websites to open
    - city for the weather
-   - optional Obsidian vault folder (tasks are `- [ ]` checkboxes anywhere in the vault)
+   - bookmarks: names and URLs of their projects/dashboards (HUD panel + "öffne X")
+   - optional Obsidian vault folder (tasks are `- [ ]` checkboxes in `tasks.md` and anywhere in the vault)
 2. Write `config.json` (schema: `config.example.json`). Add each startup program to `apps` under a short
    lowercase nickname so Jarvis can launch it by voice. Never commit `config.json` (it holds keys).
 3. Install: `py -3 -m venv .venv`, then `.venv\Scripts\pip install -r requirements.txt`.
@@ -33,6 +34,9 @@ Run the setup as a conversation (in the user's language), don't make them run th
 
 ## Conventions
 
+- `config.json` and `tasks.md` are personal and git-ignored - the GitHub repo is public. Never commit them.
+- HUD = `frontend/` (canvas reactor in `app.js`, panels fed by `GET /api/hud`). Text comes from `/api/chat`,
+  the voice separately from `/api/tts` (204 = no ElevenLabs key, the browser voice takes over).
 - Keep the Claude conversation append-only: don't edit the system prompt or tools mid-session, don't trim old
   turns (the brain restarts from a text recap instead). Put volatile info (time, weather) in user turns.
 - Replies are spoken: the system prompt asks for short, plain sentences without markdown.

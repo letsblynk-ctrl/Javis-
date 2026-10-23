@@ -35,7 +35,9 @@ def _tool(name: str, description: str, properties: dict | None = None, required:
 TOOLS = [
     _tool("get_weather", "Current weather and today's forecast for a city. Use the user's home city unless they name another.",
           {"city": {"type": "string"}}, ["city"]),
-    _tool("get_tasks", "The user's open to-do items from their Obsidian vault."),
+    _tool("get_tasks", "The user's open to-do items (from tasks.md and their Obsidian vault)."),
+    _tool("get_news", "Current headlines from Google News in the user's language. Leave topic empty for the top "
+          "stories, or give a topic (e.g. 'Immobilien München', 'KI Startups').", {"topic": {"type": "string"}}, ["topic"]),
     _tool("search_notes", "Full-text search in the user's Obsidian notes. Use when they ask about something they wrote down.",
           {"query": {"type": "string"}}, ["query"]),
     _tool("open_website", "Open a URL in the user's browser.", {"url": {"type": "string"}}, ["url"]),
@@ -102,17 +104,26 @@ class Brain:
         lang = LANGUAGE_NAMES.get(c.get("language", "en")[:2], c.get("language", "English"))
         apps = ", ".join(c.get("apps", {})) or "none configured"
         about = f"About {c['user_name']}: {c['about_me']}\n\n" if c.get("about_me") else ""
+        marks = c.get("bookmarks") or {}
+        bookmarks = (
+            "Bookmarks - when the user says \"open X\" and X is one of these, open that URL with open_website:\n"
+            + "\n".join(f"- {name}: {url}" for name, url in marks.items()) + "\n\n"
+        ) if marks else ""
         has_search = any(t.get("name") == "web_search" for t in self.tools)
         search = (
             "Internet: when the user asks about anything current or factual you aren't sure of - news, prices, "
             "scores, opening hours, people, products, events - use web_search yourself and answer from the results "
-            "in a few spoken sentences. Don't open a browser for that, don't read out sources or URLs. For \"news\", "
-            "\"what's happening in the world\" or \"the current situation\", search today's top headlines from "
-            "reputable outlets and give the three or four most important stories in one short sentence each. "
+            "in a few spoken sentences. Don't open a browser for that, don't read out sources or URLs. "
             "Use open_google_search only when the user wants to see the results page.\n\n"
             if has_search else
             "You have no internet search of your own. For questions about current events, open a Google search "
             "with open_google_search and say so.\n\n"
+        )
+        search += (
+            "News: for \"news\", \"what's new\", \"what's happening in the world\" or \"the current situation\", call "
+            "get_news and give the three or four most important stories as a short spoken briefing, one sentence "
+            "each. For news on a subject, pass it as the topic"
+            + (", and use web_search if the user wants details on one story." if has_search else ".") + "\n\n"
         )
         return (
             f"You are J.A.R.V.I.S., the personal AI assistant of {c['user_name']}, inspired by Tony Stark's Jarvis: "
@@ -138,6 +149,7 @@ class Brain:
             "Avoid live streams unless they asked for one or for continuous music, and avoid compilations or "
             "reactions unless asked. If nothing fits, search again with a better query. Then say in one short sentence "
             "what you're playing and from which channel. Only use youtube_search when they want to browse.\n\n"
+            f"{bookmarks}"
             f"Home city: {c.get('city') or 'unknown'}. Known apps: {apps}."
         )
 
@@ -146,9 +158,11 @@ class Brain:
     def _run_tool(self, name: str, args: dict):
         c = self.cfg
         if name == "get_weather":
-            return knowledge.get_weather(args.get("city") or c.get("city", ""))
+            return knowledge.get_weather(args.get("city") or c.get("city", ""), c.get("language", "en"))
         if name == "get_tasks":
             return knowledge.get_tasks(c)
+        if name == "get_news":
+            return knowledge.get_news(c, args.get("topic", ""))
         if name == "search_notes":
             return knowledge.search_notes(c, args["query"])
         if name == "open_website":
@@ -240,7 +254,7 @@ class Brain:
     def greet(self, session_id: str) -> str:
         """Greeting after the double clap: weather and today's tasks."""
         c = self.cfg
-        weather = knowledge.get_weather(c["city"]) if c.get("city") else "No city configured."
+        weather = knowledge.get_weather(c["city"], c.get("language", "en")) if c.get("city") else "No city configured."
         tasks = knowledge.get_tasks(c)
         prompt = (
             "[Event: the user just activated you - their work setup is starting.] Greet them:\n"

@@ -54,7 +54,8 @@ def test_spotify_uri():
     assert actions.spotify_uri("spotify:playlist:p") == "spotify:playlist:p"
 
 
-def test_tasks_and_notes(tmp_path):
+def test_tasks_and_notes(tmp_path, monkeypatch):
+    monkeypatch.setattr(knowledge, "TASKS_MD", tmp_path / "missing-tasks.md")
     (tmp_path / "Today.md").write_text("# Today\n- [ ] Call Pepper\n- [x] Done thing\n* [ ] Fix suit\n")
     (tmp_path / "Ideas.md").write_text("Arc reactor redesign: palladium core is toxic.\n")
     cfg = {"obsidian_vault": str(tmp_path), "tasks_file": ""}
@@ -143,3 +144,51 @@ def test_pause_turn_is_resumed():
     with mock.patch.object(brain.client.messages, "create", side_effect=lambda **kw: next(replies)) as create:
         assert brain.ask("s", "Was gibt's Neues?") == "Drei Schlagzeilen, Sir."
     assert create.call_count == 2
+
+
+def test_tasks_md_comes_first(tmp_path, monkeypatch):
+    tasks_md = tmp_path / "tasks.md"
+    monkeypatch.setattr(knowledge, "TASKS_MD", tasks_md)
+    knowledge.ensure_tasks_file()
+    tasks_md.write_text(tasks_md.read_text() + "- [ ] Exposé Filmcasino\n- [x] erledigt\n")
+    assert knowledge.list_tasks({"obsidian_vault": "", "tasks_file": ""}) == ["Jarvis ausprobieren", "Exposé Filmcasino"]
+
+
+def test_news_feed_parsing(monkeypatch):
+    rss = b"""<?xml version="1.0"?><rss><channel>
+      <item><title>Schlagzeile Eins - Quelle</title><pubDate>Fri, 23 Oct 2026 07:00:00 GMT</pubDate></item>
+      <item><title>Schlagzeile Zwei</title></item></channel></rss>"""
+    seen = {}
+
+    class Resp:
+        content = rss
+        def raise_for_status(self):
+            pass
+
+    def fake_get(url, params, **kw):
+        seen.update(url=url, params=params)
+        return Resp()
+
+    monkeypatch.setattr(knowledge.requests, "get", fake_get)
+    out = knowledge.get_news({"language": "de-DE"}, "KI Startups")
+    assert "Schlagzeile Eins - Quelle (Fri, 23 Oct 2026)" in out and "Schlagzeile Zwei" in out
+    assert seen["url"].endswith("/rss/search") and seen["params"]["q"] == "KI Startups"
+    assert seen["params"]["ceid"] == "DE:de"
+
+
+def test_bookmarks_in_prompt_and_news_tool():
+    brain = _brain(bookmarks={"KUBON": "https://example.com/kubon/"})
+    assert "- KUBON: https://example.com/kubon/" in brain.system
+    assert "get_news" in {t["name"] for t in brain.tools}
+
+
+def test_tts_endpoint_without_key_returns_204(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    import server
+
+    monkeypatch.setitem(server.cfg, "elevenlabs_api_key", "")
+    client = TestClient(server.app)
+    assert client.post("/api/tts", json={"text": "Hallo"}).status_code == 204
+    hud = client.get("/api/hud").json()
+    assert set(hud) >= {"weather", "tasks", "bookmarks", "web_search"}

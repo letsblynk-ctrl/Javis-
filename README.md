@@ -5,13 +5,16 @@ Your personal AI assistant, inspired by Iron Man's Jarvis.
 - **Clap twice** and your whole work setup starts: apps, websites, your Spotify song.
 - Jarvis **greets you** with the weather and your open tasks (also on the voice command "Jarvis activate").
 - **Talk freely** with Jarvis; he answers out loud (ElevenLabs voice).
-- **Internet & news:** ask anything current ("What's new in the world?", "When does the bakery close?").
-  Jarvis searches the web himself (Claude web search) and answers in a few sentences.
+- **Iron Man HUD:** arc reactor that pulses with Jarvis's voice, boot sequence after the clap, live panels
+  for time, weather, open tasks, system status and your project bookmarks.
+- **Internet & news:** ask anything current ("When does the bakery close?") and Jarvis searches the web
+  himself (Claude web search). "What's new?" gets a short briefing from Google News (free).
 - Jarvis can **control your browser** (open sites, Google or YouTube pages) and **start apps**.
 - **YouTube on command:** say "play the latest Tagesschau" or "put on some lofi" and Jarvis searches
   YouTube, picks the best video himself (official channels, newest for news, no reaction videos) and plays it.
 - Jarvis can **look at your screen** and describe it ("What's on my screen?", "Explain this error").
-- Optional: reads to-dos and notes from your **Obsidian** vault.
+- **To-dos:** `- [ ]` checkboxes in `tasks.md` (created on first start, never uploaded) and,
+  optionally, your **Obsidian** vault.
 
 ```
  microphone ──► clap detector ──► startup sequence ──► apps / websites / Spotify
@@ -68,8 +71,8 @@ python jarvis_main.py --no-clap    # server only, open http://127.0.0.1:8340 you
 Autostart at login (Windows): `powershell -ExecutionPolicy Bypass -File scripts\install_autostart.ps1`
 (remove again with `-Remove`).
 
-In the Jarvis window: **click the orb or press Space** to turn the microphone on or off, **Esc** stops
-Jarvis talking, or just type. After a double clap the mic is on automatically. While Jarvis is
+In the Jarvis HUD: **MIKRO AN/AUS**, the reactor or **Space** turn the microphone on or off, **Esc**
+stops Jarvis talking, **TIPPEN** opens a text field. After a double clap the mic is on automatically. While Jarvis is
 speaking the mic pauses so he doesn't hear himself.
 
 ## Tuning
@@ -83,7 +86,9 @@ speaking the mic pauses so he doesn't hear himself.
 | `clap.threshold` | Peak level (0-1) a clap must reach. Raise it if music or typing triggers Jarvis. |
 | `clap.min_gap` / `max_gap` | Allowed time between the two claps in seconds. |
 | `apps` | Nicknames → paths, so you can say "start VS Code". |
-| `tasks_file` | Use a single Markdown file for tasks instead of scanning the whole vault. |
+| `bookmarks` | Name → URL. Shown in the HUD; say "Jarvis, öffne KUBON" to open one. |
+| `startup_urls` | Websites opened by the double clap (e.g. your dashboard). |
+| `tasks_file` | Read tasks from this one Markdown file instead of `tasks.md` + vault. |
 
 API keys can also come from the environment variables `ANTHROPIC_API_KEY` and `ELEVENLABS_API_KEY`
 instead of `config.json`.

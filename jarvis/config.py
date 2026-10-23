@@ -25,6 +25,7 @@ def load_config() -> dict:
     defaults["startup_apps"] = []
     defaults["startup_urls"] = []
     defaults["apps"] = {}
+    defaults["bookmarks"] = {}
     defaults["spotify_track"] = ""
     defaults["about_me"] = ""
 

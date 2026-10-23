@@ -21,6 +21,10 @@
   "startup_urls": [
     "https://mail.google.com"
   ],
+  "bookmarks": {
+    "Gmail": "https://mail.google.com",
+    "Kalender": "https://calendar.google.com"
+  },
   "apps": {
     "vscode": "C:\\Users\\YOU\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
     "spotify": "spotify:",

@@ -1,38 +1,113 @@
 <!doctype html>
-<html lang="en">
+<html lang="de">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>J.A.R.V.I.S.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <main>
-    <header>
-      <span class="brand">J.A.R.V.I.S.</span>
-      <span id="clock"></span>
-    </header>
+  <div class="grid-bg" aria-hidden="true"></div>
+  <div class="scanlines" aria-hidden="true"></div>
 
-    <button id="orb" class="orb idle" aria-label="Toggle listening (space)">
-      <span class="ring r1"></span>
-      <span class="ring r2"></span>
-      <span class="ring r3"></span>
-      <span class="core"></span>
-    </button>
-    <div id="status">Standby</div>
-    <div id="interim"></div>
+  <!-- top bar -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-name">J.A.R.V.I.S.</span>
+      <span class="brand-sub">Just A Rather Very Intelligent System</span>
+    </div>
+    <div class="controls">
+      <button id="micBtn" class="hud-btn" title="Mikrofon an/aus (Leertaste)">MIKRO AUS</button>
+      <button id="typeBtn" class="hud-btn" title="Tippen statt sprechen">TIPPEN</button>
+    </div>
+  </header>
 
-    <section id="log" aria-live="polite"></section>
+  <main class="hud">
+    <!-- left column -->
+    <section class="col col-left">
+      <div class="panel" id="clockPanel">
+        <div class="panel-title">Lokalzeit</div>
+        <div id="clock" class="big-num">--:--</div>
+        <div id="date" class="sub"></div>
+      </div>
 
-    <form id="composer" autocomplete="off">
-      <input id="text" placeholder="Type to Jarvis… (Space = microphone)" />
-      <button type="submit">Send</button>
-    </form>
-    <div id="warn" hidden></div>
+      <div class="panel">
+        <div class="panel-title">Systemstatus</div>
+        <ul class="status-list">
+          <li><span>Gehirn</span><b id="stBrain">—</b></li>
+          <li><span>Stimme</span><b id="stVoice">—</b></li>
+          <li><span>Websuche</span><b id="stWeb">—</b></li>
+          <li><span>Mikrofon</span><b id="stMic">AUS</b></li>
+        </ul>
+      </div>
+
+      <div class="panel grow">
+        <div class="panel-title">Offene Aufgaben</div>
+        <ul id="tasks" class="task-list"><li class="muted">Lade …</li></ul>
+      </div>
+    </section>
+
+    <!-- center: reactor -->
+    <section class="center">
+      <button id="reactorBtn" class="reactor-btn" aria-label="Mikrofon an/aus">
+        <canvas id="reactor" width="1200" height="1200"></canvas>
+      </button>
+      <div id="status" class="status">STANDBY</div>
+      <div id="caption" class="caption" aria-live="polite"></div>
+      <div id="you" class="you"></div>
+      <form id="typeForm" class="type-form" autocomplete="off" hidden>
+        <input id="typeInput" placeholder="Nachricht an Jarvis …">
+        <button class="hud-btn" type="submit">SENDEN</button>
+      </form>
+    </section>
+
+    <!-- right column -->
+    <section class="col col-right">
+      <div class="panel" id="weatherPanel">
+        <div class="panel-title">Atmosphäre · <span id="wCity">—</span></div>
+        <div class="weather-row">
+          <div id="wTemp" class="big-num">--°</div>
+          <div class="weather-meta">
+            <div id="wDesc">—</div>
+            <div id="wRange" class="sub"></div>
+            <div id="wFeels" class="sub"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel grow">
+        <div class="panel-title">Projekte</div>
+        <ul id="bookmarks" class="bookmark-list"><li class="muted">Keine Lesezeichen</li></ul>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Befehle</div>
+        <ul class="hint-list">
+          <li>„Jarvis activate“</li>
+          <li>„Was gibt's Neues?“</li>
+          <li>„Öffne …“ · „Spiel … auf YouTube“</li>
+          <li>„Was siehst du auf meinem Bildschirm?“</li>
+        </ul>
+      </div>
+    </section>
   </main>
 
-  <div id="unlock" hidden>
-    <button id="unlock-btn">Click to hear Jarvis</button>
+  <div id="warn" class="warn" hidden></div>
+
+  <!-- boot sequence after the double clap -->
+  <div id="boot" class="boot" hidden>
+    <div class="boot-inner">
+      <div class="boot-logo">J.A.R.V.I.S.</div>
+      <pre id="bootLog" class="boot-log"></pre>
+      <div class="boot-bar"><span id="bootBar"></span></div>
+    </div>
+  </div>
+
+  <div id="unlock" class="unlock" hidden>
+    <button id="unlockBtn" class="hud-btn big">KLICKEN, UM JARVIS ZU HÖREN</button>
   </div>
 
   <script src="/static/app.js"></script>
