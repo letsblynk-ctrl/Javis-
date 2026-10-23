@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>J.A.R.V.I.S.</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Jarvis">
+  <meta name="theme-color" content="#05030a">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="grid-bg" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <span class="brand">J.A.R.V.I.S.</span>
+    <span class="clock" id="clock">--:--</span>
+    <span class="weather" id="weatherChip"></span>
+    <span class="spacer"></span>
+    <span class="pill" id="clapPill" hidden>KLATSCH-MODUS</span>
+    <button class="icon-btn" id="settingsBtn" aria-label="Einstellungen">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>
+    </button>
+  </header>
+
+  <main class="hud">
+    <aside class="side" id="side">
+      <section class="panel">
+        <h2>Aufgaben <span class="count" id="taskCount"></span></h2>
+        <ul id="tasks" class="list"><li class="muted">Noch keine Aufgaben.</li></ul>
+      </section>
+      <section class="panel" id="chatPanel" hidden>
+        <h2>Team-Chat</h2>
+        <ul id="chat" class="list"></ul>
+      </section>
+    </aside>
+
+    <section class="center">
+      <button id="reactorBtn" class="reactor-btn" aria-label="Jarvis wecken oder Sprechen stoppen">
+        <canvas id="reactor" width="1200" height="1200"></canvas>
+      </button>
+      <div id="status" class="status">STANDBY</div>
+      <div id="caption" class="caption" aria-live="polite"></div>
+      <div id="you" class="you"></div>
+      <div id="links" class="links"></div>
+      <div id="warn" class="warn" hidden></div>
+    </section>
+  </main>
+
+  <footer class="dock">
+    <button class="dock-btn" id="typeBtn" aria-label="Tippen">
+      <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h1M11 10h1M15 10h1M7 14h10"/></svg>
+      <span>Tippen</span>
+    </button>
+    <button class="dock-btn main" id="micBtn" aria-label="Mikrofon">
+      <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      <span id="micLabel">Sprechen</span>
+    </button>
+    <button class="dock-btn" id="clapBtn" aria-label="Klatsch-Modus" aria-pressed="false">
+      <svg viewBox="0 0 24 24"><path d="M7 11V6a1.5 1.5 0 0 1 3 0v4M10 10V4.5a1.5 1.5 0 0 1 3 0V10M13 10V6a1.5 1.5 0 0 1 3 0v6c0 4-2.5 7-6 7-2.5 0-4-1.5-5.5-4L3 12a1.5 1.5 0 0 1 2.5-1.5L7 12"/><path d="M19 3l1-1M20.5 6H22M18 1V0"/></svg>
+      <span>Klatsch-Modus</span>
+    </button>
+  </footer>
+
+  <form id="typeForm" class="type-form" autocomplete="off" hidden>
+    <input id="typeInput" enterkeyhint="send" placeholder="Nachricht an Jarvis …">
+    <button type="submit">Senden</button>
+  </form>
+
+  <!-- großer Hinweis, wenn Safari den Ton blockiert -->
+  <button id="unlock" class="unlock" hidden>
+    <span class="unlock-ring"></span>
+    <span class="unlock-text">Tippen, um Jarvis zu hören</span>
+  </button>
+
+  <!-- Einstellungen -->
+  <div class="sheet" id="sheet" hidden>
+    <div class="sheet-inner">
+      <header class="sheet-head">
+        <h2>Einstellungen</h2>
+        <button class="icon-btn" id="closeSettings" aria-label="Schließen">✕</button>
+      </header>
+
+      <section class="group">
+        <h3>Du</h3>
+        <label>Name <input id="cfgName" placeholder="z. B. Olivia"></label>
+        <label>Anrede <input id="cfgSalutation" placeholder="z. B. Sir oder Ma'am"></label>
+        <label>Stadt fürs Wetter <input id="cfgCity" placeholder="Bad Kissingen"></label>
+        <label>Über dich (1–2 Sätze) <textarea id="cfgAbout" rows="2"></textarea></label>
+      </section>
+
+      <section class="group">
+        <h3>Gehirn &amp; Stimme</h3>
+        <label>Anthropic-API-Key <input id="cfgAnthropic" type="password" autocomplete="off" placeholder="sk-ant-…"></label>
+        <label>Modell <input id="cfgModel" placeholder="claude-haiku-5-5"></label>
+        <label>ElevenLabs-API-Key <span class="opt">(leer = iPad-Stimme)</span> <input id="cfgEleven" type="password" autocomplete="off"></label>
+        <label>ElevenLabs-Voice-ID <input id="cfgVoice" placeholder="JBFqnCBsd6RMkjVDRZzb"></label>
+        <p class="note">Die Schlüssel bleiben nur auf diesem iPad gespeichert, nicht im Repo.</p>
+      </section>
+
+      <section class="group">
+        <h3>Team-Cockpit <span class="opt">(optional)</span></h3>
+        <label>Supabase-URL <input id="cfgSbUrl" placeholder="https://….supabase.co"></label>
+        <label>Anon-Key <input id="cfgSbKey" type="password" autocomplete="off"></label>
+        <label>Team-Code <input id="cfgSbCode" type="password" autocomplete="off"></label>
+        <label>Wer bist du im Cockpit <input id="cfgSbWho" placeholder="olivia"></label>
+      </section>
+
+      <section class="group">
+        <h3>Klatsch-Modus</h3>
+        <label>Schwelle <output id="thrOut">0,35</output>
+          <input id="cfgThreshold" type="range" min="0.05" max="0.9" step="0.01" value="0.35">
+        </label>
+        <div class="meter" aria-label="Pegelanzeige">
+          <div class="meter-fill" id="meterFill"></div>
+          <div class="meter-thr" id="meterThr"></div>
+        </div>
+        <div class="meter-row">
+          <button type="button" class="btn" id="meterBtn">Pegel testen</button>
+          <span id="meterInfo" class="note">Spitze: –</span>
+        </div>
+        <p class="note">Tippe auf „Pegel testen“ und klatsche ein paarmal. Stell die Schwelle etwa auf die Hälfte eines Klatschers, aber deutlich über die Raumgeräusche.</p>
+      </section>
+
+      <section class="group">
+        <h3>Siri-Kurzbefehl</h3>
+        <p class="note">In der Kurzbefehle-App: Aktion „URL öffnen“ mit diesem Link:</p>
+        <div class="copyrow"><code id="shortcutUrl"></code><button type="button" class="btn" id="copyUrl">Kopieren</button></div>
+      </section>
+
+      <section class="group">
+        <h3>Einstellungen übertragen</h3>
+        <p class="note">Safari und das Home-Bildschirm-Icon speichern getrennt. Hier kopierst du alles als Code und fügst ihn auf der anderen Seite ein.</p>
+        <div class="meter-row">
+          <button type="button" class="btn" id="exportBtn">Als Code kopieren</button>
+          <button type="button" class="btn" id="importBtn">Code einfügen</button>
+        </div>
+        <textarea id="importText" rows="2" placeholder="Code hier einfügen …" hidden></textarea>
+      </section>
+
+      <div class="sheet-actions">
+        <button type="button" class="btn primary" id="saveSettings">Speichern</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="clap.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
