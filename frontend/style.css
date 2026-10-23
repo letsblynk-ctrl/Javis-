@@ -9,6 +9,8 @@
   --text: #d6f4ff;
   --muted: #6c93a8;
   --gold: #ffc45c;
+  --accent: #5fe1ff;               /* follows the reactor color (set from app.js) */
+  --accent-soft: rgba(95, 225, 255, 0.35);
   --red: #ff5a4f;
   --hud-font: "Orbitron", "Segoe UI", sans-serif;
   --body-font: "Rajdhani", "Segoe UI", system-ui, sans-serif;
@@ -83,11 +85,80 @@ body {
 .hud-btn.on { background: rgba(95, 225, 255, 0.22); color: #fff; }
 .hud-btn.big { font-size: 16px; padding: 18px 28px; }
 
+/* ---------- dock ---------- */
+.dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  height: 78px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: clamp(28px, 12vw, 160px);
+  background: linear-gradient(180deg, rgba(4, 16, 28, 0.97), rgba(2, 8, 14, 0.99));
+  border-top: 1px solid var(--line);
+}
+.dock::before {
+  /* raised notch behind the mic button */
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -1px;
+  width: 260px;
+  height: 18px;
+  transform: translateX(-50%);
+  border-bottom: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  clip-path: polygon(0 0, 100% 0, 88% 100%, 12% 100%);
+  background: rgba(95, 225, 255, 0.04);
+}
+.dock-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 72px;
+  padding: 6px;
+  background: none;
+  border: 0;
+  color: var(--cyan);
+  font: 600 10px var(--hud-font);
+  letter-spacing: 0.2em;
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity .2s;
+}
+.dock-btn:hover, .dock-btn.on { opacity: 1; }
+.dock svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+.mic-btn {
+  position: relative;
+  top: -18px;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: radial-gradient(circle, rgba(10, 30, 46, 0.95) 55%, rgba(4, 12, 20, 0.95));
+  color: var(--accent);
+  cursor: pointer;
+  box-shadow: 0 0 0 6px rgba(2, 8, 14, 0.9), 0 0 18px var(--accent-soft);
+  transition: box-shadow .25s, background .25s;
+}
+.mic-btn svg { width: 36px; height: 36px; }
+.mic-btn.on {
+  background: radial-gradient(circle, var(--accent-soft) 0%, rgba(10, 30, 46, 0.95) 70%);
+  box-shadow: 0 0 0 6px rgba(2, 8, 14, 0.9), 0 0 34px var(--accent);
+  animation: mic-pulse 1.6s ease-in-out infinite;
+}
+@keyframes mic-pulse { 50% { box-shadow: 0 0 0 6px rgba(2, 8, 14, 0.9), 0 0 14px var(--accent-soft); } }
+
 /* ---------- layout ---------- */
 .hud {
   position: relative;
   z-index: 2;
-  height: calc(100% - 64px);
+  height: calc(100% - 64px - 78px);
   display: grid;
   grid-template-columns: minmax(220px, 300px) 1fr minmax(220px, 300px);
   gap: 20px;
@@ -220,7 +291,7 @@ body {
 
 .warn {
   position: fixed;
-  bottom: 16px;
+  bottom: 96px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 4;
@@ -278,7 +349,8 @@ body {
 /* ---------- smaller windows ---------- */
 @media (max-width: 980px) {
   html, body { overflow: auto; }
-  .hud { grid-template-columns: 1fr; height: auto; padding: 16px; }
+  .hud { grid-template-columns: 1fr; height: auto; padding: 16px 16px 110px; }
+  .dock { gap: 36px; }
   .center { order: -1; }
   #reactor { width: min(80vw, 420px); height: min(80vw, 420px); }
   .panel.grow { overflow: visible; }

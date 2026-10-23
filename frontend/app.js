@@ -13,11 +13,22 @@ let state = "idle";
 try { sessionId = sessionStorage.getItem("jarvis-session"); } catch (_) {}
 
 // =====================================================================
-// Reactor
+// Reactor: particle waves, block ring, geodesic sphere with a glowing core
 // =====================================================================
 
 const cv = $("reactor");
 const ctx = cv.getContext("2d");
+const TAU = Math.PI * 2;
+const UNITS = 1200;  // drawing coordinates; the bitmap itself matches the on-screen size
+
+function fitCanvas() {
+  const px = Math.round(Math.min(cv.clientWidth * (window.devicePixelRatio || 1), UNITS)) || UNITS;
+  if (cv.width !== px) { cv.width = px; cv.height = px; }
+  ctx.setTransform(px / UNITS, 0, 0, px / UNITS, 0, 0);
+}
+window.addEventListener("resize", fitCanvas);
+fitCanvas();
+
 // Reactor colors per state; "reactor_color" in config.json picks the palette.
 const PALETTES = {
   cyan: {
@@ -28,17 +39,63 @@ const PALETTES = {
     error: [255, 90, 79],
   },
   pink: {
-    idle: [255, 64, 160],
-    listening: [255, 105, 185],
+    idle: [255, 46, 140],
+    listening: [255, 90, 170],
     thinking: [255, 196, 92],
-    speaking: [255, 150, 210],
+    speaking: [255, 120, 190],
     error: [255, 110, 60],
   },
 };
 const COLORS = { ...PALETTES.cyan };
 let col = [...COLORS.idle];
 let level = 0;
+let spin = 0;
+let lastFrame = performance.now();
 const t0 = performance.now();
+
+// Geodesic sphere: an icosahedron subdivided twice (162 points, 480 edges).
+const SPHERE = (() => {
+  const norm = (v) => { const l = Math.hypot(...v); return v.map((x) => x / l); };
+  const p = (1 + Math.sqrt(5)) / 2;
+  const verts = [[-1, p, 0], [1, p, 0], [-1, -p, 0], [1, -p, 0], [0, -1, p], [0, 1, p],
+    [0, -1, -p], [0, 1, -p], [p, 0, -1], [p, 0, 1], [-p, 0, -1], [-p, 0, 1]].map(norm);
+  let faces = [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2],
+    [10, 7, 6], [7, 1, 8], [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11],
+    [6, 2, 10], [8, 6, 7], [9, 8, 1]];
+  const key = (a, b) => (a < b ? `${a}_${b}` : `${b}_${a}`);
+  for (let s = 0; s < 2; s++) {
+    const cache = new Map();
+    const mid = (a, b) => {
+      const k = key(a, b);
+      if (!cache.has(k)) {
+        verts.push(norm(verts[a].map((x, i) => (x + verts[b][i]) / 2)));
+        cache.set(k, verts.length - 1);
+      }
+      return cache.get(k);
+    };
+    faces = faces.flatMap(([a, b, c]) => {
+      const ab = mid(a, b), bc = mid(b, c), ca = mid(c, a);
+      return [[a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]];
+    });
+  }
+  const seen = new Set(), edges = [];
+  for (const [a, b, c] of faces) {
+    for (const [x, y] of [[a, b], [b, c], [c, a]]) {
+      if (!seen.has(key(x, y))) { seen.add(key(x, y)); edges.push([x, y]); }
+    }
+  }
+  return { verts, edges };
+})();
+
+// Particle wave rings and the spray around them.
+const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
+const RINGS = [0, 1, 2].map((k) => ({
+  R: 448 + k * 26,
+  dir: k % 2 ? -1 : 1,
+  phase: Math.random() * 10,
+  pts: Array.from({ length: 1000 }, () => ({ a: Math.random() * TAU, o: gauss() * 16 })),
+}));
+const SPRAY = Array.from({ length: 180 }, () => ({ a: Math.random() * TAU, r0: Math.random() * 100, s: 0.3 + Math.random() }));
 
 function voiceLevel(t) {
   if (analyser && !player.paused) {
@@ -51,13 +108,25 @@ function voiceLevel(t) {
   return 0;
 }
 
+function waveRadius(ring, a, t) {
+  const p = ring.phase, d = ring.dir;
+  return ring.R + level * 26
+    + Math.sin(a * 3 + d * t * 0.6 + p) * 14
+    + Math.sin(a * 5 - d * t * 0.9 + p * 2) * 9
+    + Math.sin(a * 11 + t * 2.4 + p) * (3 + level * 30);
+}
+
 function drawReactor(now) {
   const t = (now - t0) / 1000;
-  const W = cv.width, c = W / 2;
+  const dt = Math.min(0.05, (now - lastFrame) / 1000);
+  lastFrame = now;
+  const W = UNITS, c = W / 2;
   const target = COLORS[state] || COLORS.idle;
   col = col.map((v, i) => v + (target[i] - v) * 0.06);
   const [r, g, b] = col.map(Math.round);
   const rgba = (a) => `rgba(${r},${g},${b},${a})`;
+  const [lr, lg, lb] = col.map((v) => Math.round(v + (255 - v) * 0.65));
+  const light = (a) => `rgba(${lr},${lg},${lb},${a})`;
 
   let want;
   if (state === "speaking") want = voiceLevel(t);
@@ -65,137 +134,157 @@ function drawReactor(now) {
   else if (state === "listening") want = 0.18 + 0.07 * Math.sin(t * 2.4);
   else want = 0.08 + 0.03 * Math.sin(t * 1.2);
   level += (want - level) * 0.18;
+  spin += dt * (state === "thinking" ? 1.4 : 0.35 + level * 0.8);
 
   ctx.clearRect(0, 0, W, W);
-  ctx.lineCap = "round";
+  ctx.globalCompositeOperation = "source-over";
 
-  // glow
-  const glow = ctx.createRadialGradient(c, c, 60, c, c, 560);
-  glow.addColorStop(0, rgba(0.28 + level * 0.25));
+  // ambient glow
+  const glow = ctx.createRadialGradient(c, c, 80, c, c, 590);
+  glow.addColorStop(0, rgba(0.22 + level * 0.2));
   glow.addColorStop(1, rgba(0));
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, W, W);
 
-  // outer tick ring
-  ctx.save();
-  ctx.translate(c, c);
-  ctx.rotate(t * 0.05);
-  for (let i = 0; i < 180; i++) {
-    const a = (i / 180) * Math.PI * 2;
-    const long = i % 15 === 0;
-    const r1 = long ? 498 : 510, r2 = 528;
-    ctx.strokeStyle = rgba(long ? 0.9 : 0.35);
-    ctx.lineWidth = long ? 4 : 2;
-    ctx.beginPath();
-    ctx.moveTo(Math.cos(a) * r1, Math.sin(a) * r1);
-    ctx.lineTo(Math.cos(a) * r2, Math.sin(a) * r2);
-    ctx.stroke();
-  }
-  ctx.restore();
+  ctx.globalCompositeOperation = "lighter";
 
-  // segmented arcs (counter-rotating)
-  const arcs = (radius, count, span, speed, width, alpha) => {
-    ctx.save();
-    ctx.translate(c, c);
-    ctx.rotate(t * speed);
-    ctx.strokeStyle = rgba(alpha);
-    ctx.lineWidth = width;
-    for (let i = 0; i < count; i++) {
-      const a = (i / count) * Math.PI * 2;
-      ctx.beginPath();
-      ctx.arc(0, 0, radius, a, a + span);
-      ctx.stroke();
+  // particle wave rings
+  // (one path per ring: thousands of fillRect calls are too slow)
+  RINGS.forEach((ring, k) => {
+    ctx.fillStyle = rgba(0.5 + level * 0.35 - k * 0.08);
+    ctx.beginPath();
+    for (const pt of ring.pts) {
+      const a = pt.a + ring.dir * t * 0.05;
+      const rad = waveRadius(ring, a, t) + pt.o * (1 + level * 1.5);
+      ctx.rect(c + Math.cos(a) * rad, c + Math.sin(a) * rad, 2.8, 2.8);
     }
-    ctx.restore();
-  };
-  arcs(468, 6, 0.75, -0.18, 6, 0.55);
-  arcs(436, 1, Math.PI * 2, 0, 1.5, 0.35);
+    ctx.fill();
+  });
+  // spray fading outwards, drawn in four alpha steps
+  const sprayPaths = [new Path2D(), new Path2D(), new Path2D(), new Path2D()];
+  for (const sp of SPRAY) {
+    const travel = (sp.r0 + t * 18 * sp.s * (1 + level * 3)) % 100;
+    const rad = 470 + travel;
+    sprayPaths[Math.min(3, Math.floor(travel / 25))]
+      .rect(c + Math.cos(sp.a + t * 0.02) * rad, c + Math.sin(sp.a + t * 0.02) * rad, 2, 2);
+  }
+  sprayPaths.forEach((path, i) => {
+    ctx.fillStyle = rgba((1 - i / 4) * (0.35 + level * 0.4));
+    ctx.fill(path);
+  });
 
-  // dashed ring
-  ctx.save();
-  ctx.translate(c, c);
-  ctx.rotate(t * 0.35);
-  ctx.setLineDash([18, 14]);
-  ctx.strokeStyle = rgba(0.45);
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.arc(0, 0, 400, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.restore();
-
-  // spectrum bars
-  const bars = 96;
-  ctx.save();
-  ctx.translate(c, c);
-  for (let i = 0; i < bars; i++) {
-    const a = (i / bars) * Math.PI * 2 - Math.PI / 2;
-    let v;
-    if (analyser && state === "speaking" && !player.paused) v = freq[(i * 3) % freq.length] / 255;
-    else v = level * (0.5 + 0.5 * Math.sin(i * 0.9 + t * 4) * Math.sin(i * 0.37 - t * 2.3));
-    const len = 8 + Math.max(0, v) * 70;
-    ctx.strokeStyle = rgba(0.35 + v * 0.6);
-    ctx.lineWidth = 5;
+  // block ring
+  const blocks = 60, gap = TAU / blocks;
+  for (let i = 0; i < blocks; i++) {
+    const a0 = i * gap + t * 0.03 - Math.PI / 2;
+    const wave = 0.5 + 0.5 * Math.sin(i * 0.45 - t * 1.6);
+    const br = 0.12 + wave * 0.32 + level * 0.35 + (i % 15 === 0 ? 0.2 : 0);
     ctx.beginPath();
-    ctx.moveTo(Math.cos(a) * 300, Math.sin(a) * 300);
-    ctx.lineTo(Math.cos(a) * (300 + len), Math.sin(a) * (300 + len));
+    ctx.arc(c, c, 388, a0, a0 + gap * 0.72);
+    ctx.arc(c, c, 318 - wave * level * 20, a0 + gap * 0.72, a0, true);
+    ctx.closePath();
+    ctx.fillStyle = rgba(br * 0.55);
+    ctx.fill();
+    ctx.strokeStyle = rgba(Math.min(1, br + 0.15));
+    ctx.lineWidth = 1.5;
     ctx.stroke();
   }
-  ctx.restore();
 
-  // thick inner arcs
-  arcs(262, 3, 1.4 + level, 0.8, 16, 0.75);
-  arcs(232, 4, 0.5, -1.1, 4, 0.5);
+  // honeycomb band
+  ctx.strokeStyle = rgba(0.16 + level * 0.15);
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  for (const [radius, size, offset] of [[292, 9, 0], [274, 9, 0.5]]) {
+    const n = Math.floor((TAU * radius) / (size * 1.8));
+    for (let i = 0; i < n; i++) {
+      const a = ((i + offset) / n) * TAU - t * 0.05;
+      const hx = c + Math.cos(a) * radius, hy = c + Math.sin(a) * radius;
+      for (let j = 0; j < 6; j++) {
+        const ha = (j / 6) * TAU + a;
+        ctx[j ? "lineTo" : "moveTo"](hx + Math.cos(ha) * size, hy + Math.sin(ha) * size);
+      }
+      ctx.closePath();
+    }
+  }
+  ctx.stroke();
 
-  // reactor coils
+  // glowing core inside the sphere (petals and lenses, clipped to the sphere)
+  const Rs = 205 * (1 + level * 0.08);
   ctx.save();
-  ctx.translate(c, c);
-  for (let i = 0; i < 10; i++) {
-    ctx.rotate(Math.PI / 5);
-    ctx.fillStyle = rgba(0.18 + level * 0.3);
-    ctx.strokeStyle = rgba(0.7);
+  ctx.beginPath();
+  ctx.arc(c, c, Rs, 0, TAU);
+  ctx.clip();
+  const body = ctx.createRadialGradient(c, c, 0, c, c, Rs);
+  body.addColorStop(0, rgba(0.55));
+  body.addColorStop(0.7, rgba(0.18));
+  body.addColorStop(1, rgba(0.32));
+  ctx.fillStyle = body;
+  ctx.fillRect(c - Rs, c - Rs, Rs * 2, Rs * 2);
+  const breathe = 1 + level * 0.25 + Math.sin(t * 1.5) * 0.03;
+  for (const k of [-1, 1]) {
+    ctx.fillStyle = rgba(0.3);
+    ctx.strokeStyle = light(0.35);
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(-26, 150);
-    ctx.lineTo(26, 150);
-    ctx.lineTo(36, 200);
-    ctx.lineTo(-36, 200);
-    ctx.closePath();
+    ctx.ellipse(c, c + k * Rs * 0.42, Rs * 0.42 * breathe, Rs * 0.5, 0, 0, TAU);
     ctx.fill();
     ctx.stroke();
+    ctx.fillStyle = rgba(0.1);
+    ctx.beginPath();
+    ctx.ellipse(c + k * Rs * 0.48, c, Rs * 0.5, Rs * 0.78 * breathe, 0, 0, TAU);
+    ctx.fill();
   }
-  ctx.restore();
-
-  // core
-  const coreR = 118 * (1 + level * 0.28);
-  const core = ctx.createRadialGradient(c, c, 0, c, c, coreR);
-  core.addColorStop(0, "rgba(255,255,255,0.98)");
-  core.addColorStop(0.35, rgba(0.9));
-  core.addColorStop(1, rgba(0.05));
-  ctx.fillStyle = core;
+  const beam = ctx.createLinearGradient(c - 40, 0, c + 40, 0);
+  beam.addColorStop(0, rgba(0));
+  beam.addColorStop(0.5, light(0.55 + level * 0.4));
+  beam.addColorStop(1, rgba(0));
+  ctx.fillStyle = beam;
+  ctx.fillRect(c - 40, c - Rs, 80, Rs * 2);
+  const hot = ctx.createRadialGradient(c, c, 0, c, c, 70 * breathe);
+  hot.addColorStop(0, "rgba(255,255,255,1)");
+  hot.addColorStop(0.3, light(0.9));
+  hot.addColorStop(1, rgba(0));
+  ctx.fillStyle = hot;
   ctx.beginPath();
-  ctx.arc(c, c, coreR, 0, Math.PI * 2);
+  ctx.arc(c, c, 70 * breathe, 0, TAU);
   ctx.fill();
-
-  // Mk II triangle
-  ctx.save();
-  ctx.translate(c, c);
-  ctx.rotate(-Math.PI / 2);
-  ctx.strokeStyle = "rgba(255,255,255,0.85)";
-  ctx.lineWidth = 5;
-  ctx.beginPath();
-  for (let i = 0; i < 3; i++) {
-    const a = (i / 3) * Math.PI * 2;
-    ctx[i ? "lineTo" : "moveTo"](Math.cos(a) * 92, Math.sin(a) * 92);
-  }
-  ctx.closePath();
-  ctx.stroke();
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = "rgba(0,0,0,0.22)";
+  for (let y = c - Rs; y < c + Rs; y += 6) ctx.fillRect(c - Rs, y, Rs * 2, 2);  // scanlines
   ctx.restore();
 
-  ctx.strokeStyle = rgba(0.9);
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.arc(c, c, 128, 0, Math.PI * 2);
-  ctx.stroke();
+  // geodesic wireframe
+  ctx.globalCompositeOperation = "lighter";
+  const ry = spin, rx = 0.35 + Math.sin(t * 0.4) * 0.12;
+  const cy = Math.cos(ry), sy = Math.sin(ry), cx = Math.cos(rx), sx = Math.sin(rx);
+  const proj = SPHERE.verts.map(([x, y, z]) => {
+    const x1 = x * cy - z * sy, z1 = x * sy + z * cy;
+    const y2 = y * cx - z1 * sx, z2 = y * sx + z1 * cx;
+    return [c + x1 * Rs, c + y2 * Rs, z2];
+  });
+  ctx.lineWidth = 1.6;
+  for (const front of [false, true]) {
+    ctx.strokeStyle = front ? light(0.75 + level * 0.25) : rgba(0.18);
+    ctx.beginPath();
+    for (const [a, bIdx] of SPHERE.edges) {
+      const pa = proj[a], pb = proj[bIdx];
+      if ((pa[2] + pb[2] > 0) !== front) continue;
+      ctx.moveTo(pa[0], pa[1]);
+      ctx.lineTo(pb[0], pb[1]);
+    }
+    ctx.stroke();
+  }
+
+  // sphere rim
+  ctx.globalCompositeOperation = "source-over";
+  // (soft halo via wide translucent strokes - shadowBlur is expensive every frame)
+  for (const [w, a] of [[22, 0.12], [12, 0.25], [5, 0.95]]) {
+    ctx.strokeStyle = a > 0.5 ? light(a) : rgba(a);
+    ctx.lineWidth = w;
+    ctx.beginPath();
+    ctx.arc(c, c, Rs + 8, 0, TAU);
+    ctx.stroke();
+  }
 
   requestAnimationFrame(drawReactor);
 }
@@ -240,8 +329,8 @@ function typeCaption(text) {
 }
 
 function updateMicUi() {
-  $("micBtn").textContent = micWanted ? "MIKRO AN" : "MIKRO AUS";
   $("micBtn").classList.toggle("on", micWanted);
+  $("micBtn").title = micWanted ? "Mikrofon ausschalten (Leertaste)" : "Mikrofon einschalten (Leertaste)";
   $("stMic").textContent = micWanted ? "AN" : "AUS";
   $("stMic").classList.toggle("off", !micWanted);
 }
@@ -510,6 +599,7 @@ function setMic(on) {
 // =====================================================================
 
 $("micBtn").onclick = () => setMic(!micWanted);
+$("stopBtn").onclick = () => stopSpeaking();
 $("reactorBtn").onclick = () => {
   ensureAudioGraph();
   if (audioCtx) audioCtx.resume();
@@ -571,6 +661,9 @@ function endBoot() {
   try { config = await (await fetch("/api/config")).json(); } catch (_) {}
   Object.assign(COLORS, PALETTES[config.reactor_color] || PALETTES.cyan);
   col = [...COLORS.idle];
+  const [ar, ag, ab] = COLORS.idle;
+  document.documentElement.style.setProperty("--accent", `rgb(${ar},${ag},${ab})`);
+  document.documentElement.style.setProperty("--accent-soft", `rgba(${ar},${ag},${ab},0.35)`);
   $("stVoice").textContent = config.has_voice ? "ELEVENLABS" : "BROWSER";
   if (!config.has_brain) warn("Kein Anthropic-API-Key - bitte setup_wizard.py ausführen.");
 
