@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>J.A.R.V.I.S.</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <span class="brand">J.A.R.V.I.S.</span>
+      <span id="clock"></span>
+    </header>
+
+    <button id="orb" class="orb idle" aria-label="Toggle listening (space)">
+      <span class="ring r1"></span>
+      <span class="ring r2"></span>
+      <span class="ring r3"></span>
+      <span class="core"></span>
+    </button>
+    <div id="status">Standby</div>
+    <div id="interim"></div>
+
+    <section id="log" aria-live="polite"></section>
+
+    <form id="composer" autocomplete="off">
+      <input id="text" placeholder="Type to Jarvis… (Space = microphone)" />
+      <button type="submit">Send</button>
+    </form>
+    <div id="warn" hidden></div>
+  </main>
+
+  <div id="unlock" hidden>
+    <button id="unlock-btn">Click to hear Jarvis</button>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+anthropic>=0.75
+fastapi>=0.115
+uvicorn>=0.30
+requests>=2.31
+numpy>=1.26
+sounddevice>=0.4.6
+mss>=9.0
+pillow>=10.0

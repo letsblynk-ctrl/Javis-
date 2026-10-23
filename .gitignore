@@ -1,0 +1,6 @@
+config.json
+.chrome-profile/
+.venv/
+__pycache__/
+*.pyc
+jarvis.log
