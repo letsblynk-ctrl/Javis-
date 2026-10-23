@@ -19,6 +19,8 @@ Run the setup as a conversation (in the user's language), don't make them run th
    - websites to open
    - city for the weather
    - bookmarks: names and URLs of their projects/dashboards (HUD panel + "öffne X")
+   - optional team cockpit (Supabase board): URL, anon key, who they are - and ask them to type the team code
+     into `config.json` themselves (it's a password; don't ask for it in chat)
    - optional Obsidian vault folder (tasks are `- [ ]` checkboxes in `tasks.md` and anywhere in the vault)
 2. Write `config.json` (schema: `config.example.json`). Add each startup program to `apps` under a short
    lowercase nickname so Jarvis can launch it by voice. Never commit `config.json` (it holds keys).
@@ -41,6 +43,9 @@ Run the setup as a conversation (in the user's language), don't make them run th
   turns (the brain restarts from a text recap instead). Put volatile info (time, weather) in user turns.
 - Replies are spoken: the system prompt asks for short, plain sentences without markdown.
 - New capability = add a tool schema to `TOOLS` and a branch in `Brain._run_tool`.
+- Cockpit (`jarvis/cockpit.py`): Supabase RPCs `board_get`, `board_kpis`, `board_task_add`, `board_set_status`,
+  `board_post_to`, all authorised by `p_code` (team code). Its tools are only offered when `team_code` is set.
+  `GET /api/cockpit` feeds the HUD; board data is cached 20 s, KPIs 5 min.
 - `web_search` is Claude's server-side tool (`web_search_20250305`); `Brain.check_web_search()` removes it at
   startup if the model's `capabilities` say it's unsupported. Don't name a local tool `web_search`.
 - No `[sarcastic]`-style tags in replies - they get spoken. The system prompt forbids them.

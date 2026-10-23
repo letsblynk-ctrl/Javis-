@@ -19,6 +19,13 @@
       <span class="brand-name">J.A.R.V.I.S.</span>
       <span class="brand-sub">Just A Rather Very Intelligent System</span>
     </div>
+    <ul class="chips" aria-label="Systemstatus">
+      <li>Gehirn <b id="stBrain">—</b></li>
+      <li>Stimme <b id="stVoice">—</b></li>
+      <li>Web <b id="stWeb">—</b></li>
+      <li>Cockpit <b id="stCockpit">—</b></li>
+      <li>Mikro <b id="stMic">AUS</b></li>
+    </ul>
   </header>
 
   <main class="hud">
@@ -30,23 +37,18 @@
         <div id="date" class="sub"></div>
       </div>
 
-      <div class="panel">
-        <div class="panel-title">Systemstatus</div>
-        <ul class="status-list">
-          <li><span>Gehirn</span><b id="stBrain">—</b></li>
-          <li><span>Stimme</span><b id="stVoice">—</b></li>
-          <li><span>Websuche</span><b id="stWeb">—</b></li>
-          <li><span>Mikrofon</span><b id="stMic">AUS</b></li>
-        </ul>
+      <div class="panel grow">
+        <div class="panel-title">Deine Aufgaben <span id="taskSource" class="title-note"></span></div>
+        <ul id="tasks" class="task-list"><li class="muted">Lade …</li></ul>
       </div>
 
-      <div class="panel grow">
-        <div class="panel-title">Offene Aufgaben</div>
-        <ul id="tasks" class="task-list"><li class="muted">Lade …</li></ul>
+      <div class="panel" id="chatPanel" hidden>
+        <div class="panel-title">Team-Chat</div>
+        <ul id="chat" class="chat-list"></ul>
       </div>
     </section>
 
-    <!-- center: reactor -->
+    <!-- center: reactor / face -->
     <section class="center">
       <button id="reactorBtn" class="reactor-btn" aria-label="Mikrofon an/aus">
         <canvas id="reactor" width="1200" height="1200"></canvas>
@@ -75,18 +77,13 @@
       </div>
 
       <div class="panel grow">
-        <div class="panel-title">Projekte</div>
-        <ul id="bookmarks" class="bookmark-list"><li class="muted">Keine Lesezeichen</li></ul>
+        <div class="panel-title">Projekte <a id="cockpitLink" class="title-link" target="_blank" rel="noopener" hidden>Cockpit ↗</a></div>
+        <ul id="projects" class="project-list"><li class="muted">Lade …</li></ul>
       </div>
 
-      <div class="panel">
-        <div class="panel-title">Befehle</div>
-        <ul class="hint-list">
-          <li>„Jarvis activate“</li>
-          <li>„Was gibt's Neues?“</li>
-          <li>„Öffne …“ · „Spiel … auf YouTube“</li>
-          <li>„Was siehst du auf meinem Bildschirm?“</li>
-        </ul>
+      <div class="panel" id="kpiPanel" hidden>
+        <div class="panel-title">BLYNK live</div>
+        <div id="kpis" class="kpi-grid"></div>
       </div>
     </section>
   </main>

@@ -11,6 +11,7 @@ from datetime import datetime
 import anthropic
 
 from . import actions, knowledge, screen, youtube
+from .cockpit import Cockpit
 
 MAX_MESSAGES = 60      # restart the conversation from a recap after this many messages
 MAX_TOOL_ROUNDS = 8    # safety stop for the tool loop
@@ -56,6 +57,27 @@ TOOLS = [
     _tool("look_at_screen", "Take a screenshot of the user's main monitor so you can see and describe what is on it."),
 ]
 
+# Only offered when the Startup-Cockpit is connected (team code in config.json).
+COCKPIT_TOOLS = [
+    _tool("get_cockpit_overview", "All projects in the user's Startup-Cockpit with status, next step, milestone and "
+          "how many tasks are open, overdue or due this week."),
+    _tool("get_cockpit_tasks", "Open tasks from the Startup-Cockpit, most urgent first, with their ids. Leave project "
+          "empty for all projects; mine_only=true for the user's own tasks (incl. shared ones).",
+          {"project": {"type": "string"}, "mine_only": {"type": "boolean"}}, ["project", "mine_only"]),
+    _tool("add_cockpit_task", "Create a task in the Startup-Cockpit. due as YYYY-MM-DD or empty; detail = when it "
+          "counts as done (or empty); owner = olivia, arbon, beide or empty.",
+          {"project": {"type": "string"}, "title": {"type": "string"}, "due": {"type": "string"},
+           "detail": {"type": "string"}, "owner": {"type": "string"}},
+          ["project", "title", "due", "detail", "owner"]),
+    _tool("complete_cockpit_task", "Mark a cockpit task as done, by the id from get_cockpit_tasks.",
+          {"task_id": {"type": "string"}}, ["task_id"]),
+    _tool("get_team_messages", "The latest messages in the cockpit's team chat."),
+    _tool("post_team_message", "Post a message to the cockpit's team chat (the whole team sees it). project is "
+          "optional (empty = general).", {"text": {"type": "string"}, "project": {"type": "string"}}, ["text", "project"]),
+    _tool("get_app_numbers", "Live numbers from the BLYNK app: applications, members, partners, evenings, bookings, "
+          "paying users."),
+]
+
 
 class Brain:
     def __init__(self, cfg: dict):
@@ -63,7 +85,9 @@ class Brain:
         self.client = anthropic.Anthropic(api_key=cfg.get("anthropic_api_key") or None)
         self.sessions: dict[str, list] = {}
         self.locks: dict[str, threading.Lock] = {}
-        self.tools = TOOLS + ([self._web_search_tool()] if cfg.get("web_search", True) else [])
+        self.cockpit = Cockpit(cfg)
+        self.tools = (TOOLS + (COCKPIT_TOOLS if self.cockpit.enabled else [])
+                      + ([self._web_search_tool()] if cfg.get("web_search", True) else []))
         self.system = self._system_prompt()
 
     def _web_search_tool(self) -> dict:
@@ -104,6 +128,13 @@ class Brain:
         lang = LANGUAGE_NAMES.get(c.get("language", "en")[:2], c.get("language", "English"))
         apps = ", ".join(c.get("apps", {})) or "none configured"
         about = f"About {c['user_name']}: {c['about_me']}\n\n" if c.get("about_me") else ""
+        cockpit = (
+            "Startup-Cockpit: you are connected to the user's team cockpit (projects, tasks, team chat, BLYNK app "
+            "numbers). Use it whenever they ask about their projects, tasks, deadlines, what's next, the team or the "
+            "app numbers - read it, don't guess. Changes are visible to the whole team, so only add or complete "
+            "tasks or post team messages when the user clearly asks for it, then confirm in one sentence what you "
+            "did. When completing a task, look up its id with get_cockpit_tasks first.\n\n"
+        ) if self.cockpit.enabled else ""
         marks = c.get("bookmarks") or {}
         bookmarks = (
             "Bookmarks - when the user says \"open X\" and X is one of these, open that URL with open_website:\n"
@@ -150,6 +181,7 @@ class Brain:
             "reactions unless asked. If nothing fits, search again with a better query. Then say in one short sentence "
             "what you're playing and from which channel. Only use youtube_search when they want to browse.\n\n"
             f"{bookmarks}"
+            f"{cockpit}"
             f"Home city: {c.get('city') or 'unknown'}. Known apps: {apps}."
         )
 
@@ -179,11 +211,32 @@ class Brain:
             return actions.launch_app(args["name"], c.get("apps", {}))
         if name == "play_spotify":
             return actions.play_spotify(args.get("link") or c.get("spotify_track", ""))
+        if name.startswith(("get_cockpit", "add_cockpit", "complete_cockpit", "get_team", "post_team", "get_app")):
+            return self._run_cockpit_tool(name, args)
         if name == "look_at_screen":
             return [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": screen.capture_screen_b64()}},
                 {"type": "text", "text": "Screenshot of the user's main monitor."},
             ]
+        raise ValueError(f"Unknown tool {name}")
+
+    def _run_cockpit_tool(self, name: str, args: dict) -> str:
+        cp = self.cockpit
+        if name == "get_cockpit_overview":
+            return cp.overview()
+        if name == "get_cockpit_tasks":
+            return cp.tasks_text(args.get("project", ""), bool(args.get("mine_only")))
+        if name == "add_cockpit_task":
+            return cp.add_task(args["project"], args["title"], args.get("due", ""), args.get("detail", ""),
+                               args.get("owner", ""))
+        if name == "complete_cockpit_task":
+            return cp.complete_task(args["task_id"])
+        if name == "get_team_messages":
+            return cp.messages_text()
+        if name == "post_team_message":
+            return cp.post_message(args["text"], args.get("project", ""))
+        if name == "get_app_numbers":
+            return cp.kpis_text()
         raise ValueError(f"Unknown tool {name}")
 
     # ---------- conversation ----------
@@ -256,13 +309,20 @@ class Brain:
         c = self.cfg
         weather = knowledge.get_weather(c["city"], c.get("language", "en")) if c.get("city") else "No city configured."
         tasks = knowledge.get_tasks(c)
+        if self.cockpit.enabled:
+            try:
+                tasks = "\n\n".join([self.cockpit.tasks_text(mine_only=True, limit=10), self.cockpit.messages_text(3),
+                                      tasks])
+            except Exception as e:  # cockpit down: greet with the local tasks
+                tasks += f"\n(Cockpit not reachable: {e})"
         prompt = (
             "[Event: the user just activated you - their work setup is starting.] Greet them:\n"
             "- Greet them in a way that fits the time of day, and be creative - don't use the same opening every day.\n"
             "- One short sentence on the weather: the temperature, whether it's sunny, clear, cloudy or rainy, and "
             "how it feels. No humidity, no wind figures unless it's stormy.\n"
-            "- Summarize the open tasks as an overview in one sentence instead of reading each one out; add a short "
-            "witty remark or tip if one fits.\n"
+            "- Summarize the open tasks as an overview in one sentence instead of reading each one out - mention "
+            "anything overdue or due this week; add a short witty remark or tip if one fits.\n"
+            "- If a teammate wrote something new in the team chat, mention it in half a sentence.\n"
             "- End by asking what's first. Keep it all under 70 words.\n\n"
             f"Weather: {weather}\n\n{tasks}"
         )

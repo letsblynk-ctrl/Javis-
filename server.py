@@ -59,6 +59,7 @@ def public_config():
         "has_voice": bool(cfg.get("elevenlabs_api_key")),
         "has_brain": bool(cfg.get("anthropic_api_key")),
         "reactor_color": cfg.get("reactor_color", "cyan"),
+        "avatar": cfg.get("avatar", "sphere"),
     }
 
 
@@ -94,6 +95,12 @@ def hud():
         "model": cfg.get("model"),
         "web_search": any(t.get("name") == "web_search" for t in brain.tools),
     }
+
+
+@app.get("/api/cockpit")
+def cockpit():
+    """Startup-Cockpit panels (projects, tasks, team chat, app numbers); {"connected": false} if not set up."""
+    return brain.cockpit.hud()
 
 
 @app.post("/api/chat")

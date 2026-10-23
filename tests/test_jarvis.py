@@ -192,3 +192,77 @@ def test_tts_endpoint_without_key_returns_204(monkeypatch):
     assert client.post("/api/tts", json={"text": "Hallo"}).status_code == 204
     hud = client.get("/api/hud").json()
     assert set(hud) >= {"weather", "tasks", "bookmarks", "web_search"}
+
+
+def _cockpit(monkeypatch, board, calls=None, status=200):
+    from jarvis import cockpit as cp_mod
+
+    class Resp:
+        def __init__(self, data, code):
+            self._data, self.status_code = data, code
+            self.ok = code < 400
+            self.text = "x"
+
+        def json(self):
+            return self._data
+
+    def fake_post(url, headers, json, timeout):
+        fn = url.rsplit("/", 1)[-1]
+        if calls is not None:
+            calls.append((fn, json))
+        if status != 200:
+            return Resp({"message": "falscher_code"}, status)
+        return Resp(board if fn == "board_get" else {"mitglieder": 64} if fn == "board_kpis" else None, 200)
+
+    monkeypatch.setattr(cp_mod.requests, "post", fake_post)
+    return cp_mod.Cockpit({"cockpit": {"supabase_url": "https://x.supabase.co", "anon_key": "k",
+                                       "team_code": "code", "who": "olivia", "web_url": "https://cockpit"}})
+
+
+BOARD = {
+    "projects": [{"id": "kubon", "name": "KUBON", "ord": 2, "next": "Anfragen"},
+                 {"id": "wolki", "name": "Wolki", "ord": 1, "main": True}],
+    "tasks": [
+        {"id": 1, "title": "Alt", "project": "wolki", "due": "2000-01-01", "status": "offen", "owner": "olivia"},
+        {"id": 2, "title": "Später", "project": "kubon", "horizon": "spaeter", "status": "offen", "owner": "arbon"},
+        {"id": 3, "title": "Fertig", "project": "kubon", "status": "erledigt"},
+    ],
+    "messages": [{"who": "arbon", "text": "Hallo", "at": "2026-10-23T08:00"}],
+}
+
+
+def test_cockpit_reading(monkeypatch):
+    cp = _cockpit(monkeypatch, BOARD)
+    assert [p["id"] for p in cp.projects()] == ["wolki", "kubon"]  # main project first
+    tasks = cp.open_tasks()
+    assert [t["title"] for t in tasks] == ["Alt", "Später"] and tasks[0]["bucket"] == "late"
+    assert [t["title"] for t in cp.open_tasks(mine_only=True)] == ["Alt"]
+    assert "[1] Alt (Wolki, überfällig" in cp.tasks_text()
+    assert "Arbon" in cp.messages_text()
+    hud = cp.hud()
+    assert hud["connected"] and hud["kpis"] == {"Mitglieder": 64}
+    assert {p["name"]: p["late"] for p in hud["projects"]} == {"Wolki": 1, "KUBON": 0}
+
+
+def test_cockpit_writing(monkeypatch):
+    calls = []
+    cp = _cockpit(monkeypatch, BOARD, calls)
+    cp.add_task("kubon", "Muster bestellen", due="2026-11-01")
+    fn, body = calls[-1]
+    assert fn == "board_task_add" and body["p_project"] == "kubon" and body["p_code"] == "code"
+    assert body["p_due"] == "2026-11-01" and body["p_horizon"] is None and body["p_who"] == "olivia"
+    cp.complete_task("2")
+    assert calls[-1][0] == "board_set_status" and calls[-1][1]["p_status"] == "erledigt"
+    import pytest
+    from jarvis.cockpit import CockpitError
+    with pytest.raises(CockpitError, match="gibt es im Cockpit nicht"):
+        cp.add_task("Marvel", "x")
+
+
+def test_cockpit_wrong_code_and_tools(monkeypatch):
+    cp = _cockpit(monkeypatch, BOARD, status=403)
+    assert cp.hud() == {"connected": False, "error": "Der Team-Code stimmt nicht."}
+    assert "get_cockpit_tasks" not in {t["name"] for t in _brain().tools}  # no team code -> no cockpit tools
+    brain = _brain(cockpit={"supabase_url": "https://x", "anon_key": "k", "team_code": "c"})
+    assert {"get_cockpit_tasks", "post_team_message"} <= {t["name"] for t in brain.tools}
+    assert "Startup-Cockpit" in brain.system

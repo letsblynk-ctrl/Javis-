@@ -116,6 +116,163 @@ function waveRadius(ring, a, t) {
     + Math.sin(a * 11 + t * 2.4 + p) * (3 + level * 30);
 }
 
+// =====================================================================
+// Face: a wireframe head (grid lines over a sculpted surface)
+// =====================================================================
+
+const smooth = (a, b, x) => { const k = Math.min(1, Math.max(0, (x - a) / (b - a))); return k * k * (3 - 2 * k); };
+const bump = (u, v, u0, v0, su, sv) => Math.exp(-(((u - u0) / su) ** 2) - (((v - v0) / sv) ** 2));
+
+// u: angle around the head (0 = facing us), v: -1 crown ... 1 chin. Returns [x, y, z] in head units.
+function headPoint(u, v, mouth) {
+  let w;
+  if (v < -0.15) w = 0.78 * Math.sqrt(Math.max(0, 1 - ((v + 0.15) / 0.85) ** 2));
+  else w = 0.78 - 0.05 * smooth(-0.15, 0.3, v) - 0.36 * smooth(0.35, 1.08, v) ** 1.3;
+  const front = Math.max(0, Math.cos(u));
+  let x = w * Math.sin(u);
+  let z = w * 1.12 * Math.cos(u);
+  let y = v * 1.25;
+
+  // features, mostly on the front
+  z += 0.24 * Math.exp(-((u / 0.17) ** 2)) * smooth(0.0, 0.33, v) * (1 - smooth(0.36, 0.44, v));  // nose
+  z -= 0.09 * (bump(u, v, -0.34, 0.0, 0.15, 0.09) + bump(u, v, 0.34, 0.0, 0.15, 0.09));           // eye sockets
+  z += 0.05 * Math.exp(-(((v + 0.1) / 0.06) ** 2)) * Math.exp(-((u / 0.65) ** 2));               // brow
+  z += 0.04 * (bump(u, v, -0.5, 0.22, 0.2, 0.12) + bump(u, v, 0.5, 0.22, 0.2, 0.12));            // cheekbones
+  z += 0.035 * bump(u, v, 0, 0.53, 0.26, 0.04) + 0.03 * bump(u, v, 0, 0.66, 0.24, 0.04);          // lips
+  z += 0.05 * bump(u, v, 0, 0.92, 0.3, 0.08);                                                       // chin
+  // open mouth: everything below the lips drops a little (jaw)
+  y += mouth * 0.13 * smooth(0.55, 0.62, v) * Math.exp(-((u / 0.9) ** 2)) * front;
+  return [x, y, z];
+}
+
+function drawFace(c, t, rgba, light, open, blink) {
+  const S = 205;  // head units -> canvas units
+  const yaw = 0.32 * Math.sin(t * 0.33) + 0.08 * Math.sin(t * 0.81);
+  const pitch = -0.06 + 0.05 * Math.sin(t * 0.27);
+  const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const project = ([x, y, z]) => {
+    const x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
+    const y2 = y * cp - z1 * sp, z2 = y * sp + z1 * cp;
+    const f = 1 / (1 - z2 * 0.12);
+    return [c + x1 * S * f, c + (y2 + 0.05) * S * f, z2];
+  };
+  const P = (u, v) => project(headPoint(u, v, open));
+
+  // soft glow behind the head
+  const halo = ctx.createRadialGradient(c, c, 40, c, c, 280);
+  halo.addColorStop(0, rgba(0.35 + open * 0.2));
+  halo.addColorStop(1, rgba(0));
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(c, c, 280, 0, TAU);
+  ctx.fill();
+
+  // grid: draw each short segment front-bright / back-dim
+  const front = new Path2D(), back = new Path2D();
+  const seg = (a, b) => { const path = a[2] + b[2] > 0 ? front : back; path.moveTo(a[0], a[1]); path.lineTo(b[0], b[1]); };
+  for (let i = 0; i <= 26; i++) {                 // horizontal rings
+    const v = -0.97 + (i / 26) * 1.94;
+    let prev = P(-Math.PI, v);
+    for (let j = 1; j <= 72; j++) {
+      const cur = P(-Math.PI + (j / 72) * TAU, v);
+      seg(prev, cur);
+      prev = cur;
+    }
+  }
+  for (let i = 0; i < 32; i++) {                  // vertical meridians
+    const u = -Math.PI + (i / 32) * TAU;
+    let prev = P(u, -1);
+    for (let j = 1; j <= 44; j++) {
+      const cur = P(u, -1 + (j / 44) * 2);
+      seg(prev, cur);
+      prev = cur;
+    }
+  }
+  for (const side of [-1, 1]) {                   // ears: two nested loops on each side
+    for (const depth of [0.13, 0.07]) {
+      let prev = null;
+      for (let j = 0; j <= 24; j++) {
+        const k = j / 24, v = -0.12 + k * 0.5;
+        const [x, y, z] = headPoint(side * 1.52, v, 0);
+        const out = depth * Math.sin(k * Math.PI) ** 0.8;
+        const cur = project([x + side * out, y, z - out * 0.4]);
+        if (prev) seg(prev, cur);
+        prev = cur;
+      }
+    }
+  }
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineWidth = 1.1;
+  ctx.strokeStyle = rgba(0.12);
+  ctx.stroke(back);
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = light(0.55 + open * 0.25);
+  ctx.stroke(front);
+
+  const curve = (pts, width, alpha, close) => {
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    if (close) ctx.closePath();
+    ctx.lineWidth = width;
+    ctx.strokeStyle = light(alpha);
+    ctx.stroke();
+  };
+  const range = (n, f) => Array.from({ length: n + 1 }, (_, k) => f(k / n));
+
+  // bright face outline (forehead arc, cheeks, chin)
+  const outline = [
+    ...range(24, (k) => P(-0.95, 0.9 - k * 1.45)),
+    ...range(24, (k) => P(-0.95 + k * 1.9, -0.55 - Math.sin(k * Math.PI) * 0.1)),
+    ...range(24, (k) => P(0.95, -0.55 + k * 1.45)),
+    ...range(16, (k) => P(0.95 - k * 1.9, 0.9 + Math.sin(k * Math.PI) * 0.06)),
+  ];
+  curve(outline, 4, 0.85, true);
+
+  // eyes (almond shapes, blinking)
+  for (const side of [-1, 1]) {
+    const u0 = side * 0.34, open_ = 0.045 * (1 - blink) + 0.004;
+    const upper = range(16, (k) => P(u0 - 0.13 + k * 0.26, 0.0 - Math.sin(k * Math.PI) * open_));
+    const lower = range(16, (k) => P(u0 + 0.13 - k * 0.26, 0.0 + Math.sin(k * Math.PI) * open_ * 0.7));
+    curve([...upper, ...lower], 3, 0.95, true);
+  }
+
+  // nose tip and nostrils
+  curve(range(16, (k) => P(-0.09 + k * 0.18, 0.4 + Math.sin(k * Math.PI) * 0.03)), 2.5, 0.85);
+  curve(range(10, (k) => P(-0.04 + Math.sin(k * Math.PI) * 0.01, 0.12 + k * 0.26)), 1.5, 0.4);
+
+  // lips: one line when closed, two when the mouth opens
+  const lip = (dv) => range(20, (k) => {
+    const u = -0.2 + k * 0.4;
+    return P(u, 0.58 + dv * Math.sin(k * Math.PI));
+  });
+  curve(lip(-0.025), 2.5, 0.8);
+  if (open > 0.05) curve(lip(0.02 + open * 0.03).map((p, k) => [p[0], p[1] + open * 0.13 * S * Math.sin((k / 20) * Math.PI) * 0.6]), 2.5, 0.8);
+
+  // glowing nodes: forehead and cheeks
+  for (const [u, v, phase] of [[0, -0.45, 0], [-0.46, 0.24, 1.7], [0.42, 0.3, 3.1]]) {
+    const [x, y, z] = P(u, v);
+    if (z < 0) continue;
+    const r = 3.5 + 1.5 * Math.sin(t * 2.2 + phase) + open * 2;
+    const dot = ctx.createRadialGradient(x, y, 0, x, y, r * 3);
+    dot.addColorStop(0, "rgba(255,255,255,1)");
+    dot.addColorStop(0.3, light(0.8));
+    dot.addColorStop(1, rgba(0));
+    ctx.fillStyle = dot;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 3, 0, TAU);
+    ctx.fill();
+  }
+  ctx.globalCompositeOperation = "source-over";
+}
+
+// blink every few seconds
+let blinkAt = performance.now() + 2500;
+function blinkAmount(now) {
+  if (now > blinkAt + 180) blinkAt = now + 2500 + Math.random() * 3500;
+  const k = (now - blinkAt) / 180;
+  return k < 0 || k > 1 ? 0 : Math.sin(k * Math.PI);
+}
+
 function drawReactor(now) {
   const t = (now - t0) / 1000;
   const dt = Math.min(0.05, (now - lastFrame) / 1000);
@@ -190,23 +347,31 @@ function drawReactor(now) {
     ctx.stroke();
   }
 
-  // honeycomb band
-  ctx.strokeStyle = rgba(0.16 + level * 0.15);
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  for (const [radius, size, offset] of [[292, 9, 0], [274, 9, 0.5]]) {
-    const n = Math.floor((TAU * radius) / (size * 1.8));
-    for (let i = 0; i < n; i++) {
-      const a = ((i + offset) / n) * TAU - t * 0.05;
-      const hx = c + Math.cos(a) * radius, hy = c + Math.sin(a) * radius;
-      for (let j = 0; j < 6; j++) {
-        const ha = (j / 6) * TAU + a;
-        ctx[j ? "lineTo" : "moveTo"](hx + Math.cos(ha) * size, hy + Math.sin(ha) * size);
+  if (config.avatar !== "face") {
+    // honeycomb band
+    ctx.strokeStyle = rgba(0.16 + level * 0.15);
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (const [radius, size, offset] of [[292, 9, 0], [274, 9, 0.5]]) {
+      const n = Math.floor((TAU * radius) / (size * 1.8));
+      for (let i = 0; i < n; i++) {
+        const a = ((i + offset) / n) * TAU - t * 0.05;
+        const hx = c + Math.cos(a) * radius, hy = c + Math.sin(a) * radius;
+        for (let j = 0; j < 6; j++) {
+          const ha = (j / 6) * TAU + a;
+          ctx[j ? "lineTo" : "moveTo"](hx + Math.cos(ha) * size, hy + Math.sin(ha) * size);
+        }
+        ctx.closePath();
       }
-      ctx.closePath();
     }
+    ctx.stroke();
   }
-  ctx.stroke();
+
+  if (config.avatar === "face") {
+    drawFace(c, t, rgba, light, state === "speaking" ? Math.min(1, level * 1.4) : 0, blinkAmount(now));
+    requestAnimationFrame(drawReactor);
+    return;
+  }
 
   // glowing core inside the sphere (petals and lenses, clipped to the sphere)
   const Rs = 205 * (1 + level * 0.08);
@@ -367,9 +532,44 @@ function renderList(el, items, render, emptyText) {
   for (const item of items) el.append(render(item));
 }
 
+const el = (tag, cls, text) => {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text != null) node.textContent = text;
+  return node;
+};
+
+let cockpitConnected = false;
+let lastHud = null;
+
+function renderLocalTasks(tasks) {
+  $("taskSource").textContent = "· tasks.md";
+  renderList($("tasks"), tasks, (task) => {
+    const li = el("li");
+    li.append(el("span", "t-title", task));
+    return li;
+  }, "Keine offenen Aufgaben");
+}
+
+function renderBookmarks(bookmarks) {
+  renderList($("projects"), Object.entries(bookmarks), ([name, url]) => {
+    const li = el("li");
+    const a = el("a");
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener";
+    const head = el("div", "p-head");
+    head.append(el("span", "p-name", name), el("span", "p-count", "↗"));
+    a.append(head);
+    li.append(a);
+    return li;
+  }, "Keine Lesezeichen");
+}
+
 async function loadHud() {
   let hud;
   try { hud = await (await fetch("/api/hud")).json(); } catch (_) { return; }
+  lastHud = hud;
 
   const w = hud.weather;
   if (!w && !loadHud.retried) {
@@ -384,30 +584,79 @@ async function loadHud() {
     $("wFeels").textContent = `gefühlt ${Math.round(w.feels_like)}°`;
   }
 
-  renderList($("tasks"), hud.tasks || [], (task) => {
-    const li = document.createElement("li");
-    li.textContent = task;
-    return li;
-  }, "Keine offenen Aufgaben");
-
-  renderList($("bookmarks"), Object.entries(hud.bookmarks || {}), ([name, url]) => {
-    const li = document.createElement("li");
-    const a = document.createElement("a");
-    a.href = url;
-    a.target = "_blank";
-    a.rel = "noopener";
-    a.textContent = name;
-    const arrow = document.createElement("span");
-    arrow.textContent = "↗";
-    a.append(arrow);
-    li.append(a);
-    return li;
-  }, "Keine Lesezeichen");
+  if (!cockpitConnected) {
+    renderLocalTasks(hud.tasks || []);
+    renderBookmarks(hud.bookmarks || {});
+  }
 
   $("stWeb").textContent = hud.web_search ? "ONLINE" : "GOOGLE";
   const model = (hud.model || "").replace(/^claude-/, "").replace(/-(\d+)-(\d+)$/, " $1.$2").toUpperCase();
   $("stBrain").textContent = config.has_brain ? model || "CLAUDE" : "KEIN KEY";
   $("stBrain").classList.toggle("off", !config.has_brain);
+}
+
+const BUCKET_LABEL = { late: "überfällig", woche: "Woche", monat: "Monat", quartal: "Quartal", spaeter: "später" };
+
+async function loadCockpit() {
+  let cp;
+  try { cp = await (await fetch("/api/cockpit")).json(); } catch (_) { return; }
+  cockpitConnected = !!cp.connected;
+  const chip = $("stCockpit");
+  chip.textContent = cp.connected ? "ONLINE" : cp.error ? "FEHLER" : "AUS";
+  chip.classList.toggle("off", !cp.connected && !cp.error);
+  chip.classList.toggle("bad", !!cp.error);
+  chip.title = cp.error || "";
+  $("chatPanel").hidden = !cp.connected;
+  $("kpiPanel").hidden = !cp.connected || !Object.keys(cp.kpis || {}).length;
+
+  if (!cp.connected) {
+    if (lastHud) { renderLocalTasks(lastHud.tasks || []); renderBookmarks(lastHud.bookmarks || {}); }
+    return;
+  }
+
+  const link = $("cockpitLink");
+  link.hidden = !cp.web_url;
+  if (cp.web_url) link.href = cp.web_url;
+
+  $("taskSource").textContent = "· Cockpit";
+  renderList($("tasks"), cp.tasks || [], (t) => {
+    const li = el("li");
+    const title = el("span", "t-title", t.title);
+    title.append(el("span", "t-proj", t.project + (t.due ? " · " + new Date(t.due + "T00:00").toLocaleDateString("de-DE", { day: "numeric", month: "short" }) : "")));
+    li.append(el("span", "badge " + t.bucket, BUCKET_LABEL[t.bucket] || t.bucket), title);
+    return li;
+  }, "Nichts offen. Queen-Modus: Freizeit.");
+
+  renderList($("projects"), cp.projects || [], (p) => {
+    const li = el("li");
+    const a = el("a");
+    a.href = (cp.web_url || "#") + "#" + encodeURIComponent(p.id);
+    a.target = "_blank";
+    a.rel = "noopener";
+    if (p.color) a.style.setProperty("--p-color", p.color);
+    const head = el("div", "p-head");
+    const count = el("span", "p-count", `${p.open} offen`);
+    if (p.late) count.append(" · ", el("span", "late", `${p.late} überfällig`));
+    head.append(el("span", "p-name", p.name), count);
+    a.append(head, el("div", "p-next", p.next ? "Nächster Schritt: " + p.next : p.status || ""));
+    li.append(a);
+    return li;
+  }, "Keine Projekte");
+
+  renderList($("chat"), cp.messages || [], (m) => {
+    const li = el("li");
+    const text = el("div", "chat-text");
+    text.append(el("b", null, m.who), m.text || "");
+    li.append(text);
+    return li;
+  }, "Noch keine Nachrichten");
+
+  const kpis = $("kpis");
+  kpis.replaceChildren(...Object.entries(cp.kpis || {}).slice(0, 6).map(([label, value]) => {
+    const box = el("div", "kpi");
+    box.append(el("b", null, String(value)), el("span", null, label));
+    return box;
+  }));
 }
 
 // =====================================================================
@@ -532,6 +781,7 @@ async function handle(path, body, userText, beforeReply) {
     idleState();
     resumeRecognition();
     loadHud();
+    loadCockpit();
   }
 }
 
@@ -671,7 +921,9 @@ function endBoot() {
   updateMicUi();
   idleState();
   loadHud();
+  loadCockpit();
   setInterval(loadHud, 10 * 60 * 1000);
+  setInterval(loadCockpit, 30 * 1000);
 
   const greet = new URLSearchParams(location.search).has("greet");
   if (greet) {
