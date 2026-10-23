@@ -7,11 +7,13 @@ long it is restarted from a short text recap instead of trimming earlier turns.
 
 import threading
 from datetime import datetime
+from pathlib import Path
 
 import anthropic
 
 from . import actions, knowledge, screen, youtube
 from .cockpit import Cockpit
+from .config import ROOT
 
 MAX_MESSAGES = 60      # restart the conversation from a recap after this many messages
 MAX_TOOL_ROUNDS = 8    # safety stop for the tool loop
@@ -128,6 +130,13 @@ class Brain:
         lang = LANGUAGE_NAMES.get(c.get("language", "en")[:2], c.get("language", "English"))
         apps = ", ".join(c.get("apps", {})) or "none configured"
         about = f"About {c['user_name']}: {c['about_me']}\n\n" if c.get("about_me") else ""
+        profile = self._profile()
+        if profile:
+            about += (
+                f"{c['user_name']}'s own profile. Follow the working preferences in it, and when they ask you to "
+                "remind them of certain kinds of tasks, do so proactively and make those tasks easy (offer to "
+                f"draft the e-mail, find the number, create the task):\n<profile>\n{profile}\n</profile>\n\n"
+            )
         cockpit = (
             "Startup-Cockpit: you are connected to the user's team cockpit (projects, tasks, team chat, BLYNK app "
             "numbers). Use it whenever they ask about their projects, tasks, deadlines, what's next, the team or the "
@@ -184,6 +193,15 @@ class Brain:
             f"{cockpit}"
             f"Home city: {c.get('city') or 'unknown'}. Known apps: {apps}."
         )
+
+    def _profile(self) -> str:
+        """Personal profile (Markdown) from profile_file - personal and git-ignored like config.json."""
+        name = self.cfg.get("profile_file") or "profile.md"
+        path = ROOT / name if not Path(name).is_absolute() else Path(name)
+        try:
+            return path.read_text(encoding="utf-8").strip()[:20000]
+        except OSError:
+            return ""
 
     # ---------- tools ----------
 
@@ -323,6 +341,8 @@ class Brain:
             "- Summarize the open tasks as an overview in one sentence instead of reading each one out - mention "
             "anything overdue or due this week; add a short witty remark or tip if one fits.\n"
             "- If a teammate wrote something new in the team chat, mention it in half a sentence.\n"
+            "- If their profile asks to be reminded of certain kinds of tasks (e.g. lawyers, tax advisor, "
+            "authorities, deadlines), name the most pressing open one and offer to make it easy.\n"
             "- End by asking what's first. Keep it all under 70 words.\n\n"
             f"Weather: {weather}\n\n{tasks}"
         )

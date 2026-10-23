@@ -266,3 +266,11 @@ def test_cockpit_wrong_code_and_tools(monkeypatch):
     brain = _brain(cockpit={"supabase_url": "https://x", "anon_key": "k", "team_code": "c"})
     assert {"get_cockpit_tasks", "post_team_message"} <= {t["name"] for t in brain.tools}
     assert "Startup-Cockpit" in brain.system
+
+
+def test_profile_file_goes_into_prompt(tmp_path):
+    profile = tmp_path / "me.md"
+    profile.write_text("# Profil\n- Erinnere mich an Fristen beim Steuerberater.\n", encoding="utf-8")
+    brain = _brain(profile_file=str(profile))
+    assert "<profile>" in brain.system and "Steuerberater" in brain.system
+    assert "<profile>" not in _brain(profile_file=str(tmp_path / "missing.md")).system

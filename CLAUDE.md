@@ -36,7 +36,8 @@ Run the setup as a conversation (in the user's language), don't make them run th
 
 ## Conventions
 
-- `config.json` and `tasks.md` are personal and git-ignored - the GitHub repo is public. Never commit them.
+- `config.json`, `tasks.md` and `profile.md` are personal and git-ignored - the GitHub repo is public. Never
+  commit them. `profile.md` goes into the system prompt as-is.
 - HUD = `frontend/` (canvas reactor in `app.js`, panels fed by `GET /api/hud`). Text comes from `/api/chat`,
   the voice separately from `/api/tts` (204 = no ElevenLabs key, the browser voice takes over).
 - Keep the Claude conversation append-only: don't edit the system prompt or tools mid-session, don't trim old

@@ -3,6 +3,7 @@
   "salutation": "Sir",
   "language": "de-DE",
   "about_me": "AI consultant and automation builder. Works mostly in VS Code, records YouTube videos on Fridays.",
+  "profile_file": "profile.md",
 
   "anthropic_api_key": "",
   "model": "claude-haiku-5-5",
