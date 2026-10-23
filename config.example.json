@@ -36,6 +36,7 @@
 
   "reactor_color": "cyan",
   "avatar": "sphere",
+  "face_style": "hologram",
 
   "cockpit": {
     "supabase_url": "",

@@ -231,6 +231,10 @@ function drawFace(c, t, rgba, light, open, blink, glance) {
     ctx.stroke();
   }
 
+  // "particles" style: everything is drawn as dots, the face stays hollow (no body, no grid lines)
+  const dotted = config.face_style === "particles";
+  if (dotted) { ctx.setLineDash([0.1, 5.5]); ctx.lineCap = "round"; }
+
   // halo
   const halo = ctx.createRadialGradient(c, top, 40, c, top, 330);
   halo.addColorStop(0, rgba(0.32 + open * 0.2));
@@ -271,39 +275,64 @@ function drawFace(c, t, rgba, light, open, blink, glance) {
   }
   const silhouette = path([...left, ...right.reverse()]);
   silhouette.closePath();
-  const body = ctx.createRadialGradient(c, top - 20, 20, c, top, 260);
-  body.addColorStop(0, rgba(0.32));
-  body.addColorStop(0.75, rgba(0.16));
-  body.addColorStop(1, rgba(0.3));
-  ctx.fillStyle = body;
-  ctx.fill(silhouette);
-  ctx.save();
-  ctx.clip(silhouette);
-  ctx.globalCompositeOperation = "source-over";
-  ctx.fillStyle = "rgba(0,0,0,0.25)";
-  for (let y = top - 300; y < top + 300; y += 6) ctx.fillRect(c - 300, y, 600, 2);
-  ctx.restore();
-  ctx.globalCompositeOperation = "lighter";
+  if (!dotted) {
+    const body = ctx.createRadialGradient(c, top - 20, 20, c, top, 260);
+    body.addColorStop(0, rgba(0.32));
+    body.addColorStop(0.75, rgba(0.16));
+    body.addColorStop(1, rgba(0.3));
+    ctx.fillStyle = body;
+    ctx.fill(silhouette);
+    ctx.save();
+    ctx.clip(silhouette);
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    for (let y = top - 300; y < top + 300; y += 6) ctx.fillRect(c - 300, y, 600, 2);
+    ctx.restore();
+    ctx.globalCompositeOperation = "lighter";
+  }
 
-  // grid
-  const front = new Path2D(), back = new Path2D();
-  const seg = (a, b) => { const p = a[2] + b[2] > 0 ? front : back; p.moveTo(a[0], a[1]); p.lineTo(b[0], b[1]); };
-  for (let i = 0; i <= 34; i++) {
-    const v = -0.97 + (i / 34) * 1.94;
-    let prev = P(-Math.PI, v);
-    for (let j = 1; j <= 80; j++) { const cur = P(-Math.PI + (j / 80) * TAU, v); seg(prev, cur); prev = cur; }
+  if (dotted) {
+    // point cloud: dense at the silhouette, sparse towards the middle - the hollow look
+    const rimDots = new Path2D(), midDots = new Path2D(), faintDots = new Path2D();
+    for (let i = 0; i <= 40; i++) {
+      const v = -0.98 + (i / 40) * 1.96;
+      for (let j = 0; j < 96; j++) {
+        const u = -Math.PI + (j / 96) * TAU + (i % 2) * (TAU / 192);
+        const q = headPoint(u, v, open);
+        const r = Math.hypot(q[0], q[2]) || 1;
+        const [x, y, z] = project(q);
+        if (z < -0.15 * r) continue;
+        const rim = 1 - Math.max(0, z) / r;
+        (rim > 0.72 ? rimDots : rim > 0.42 ? midDots : faintDots).rect(x - 1.3, y - 1.3, 2.6, 2.6);
+      }
+    }
+    ctx.fillStyle = light(0.9);
+    ctx.fill(rimDots);
+    ctx.fillStyle = rgba(0.6);
+    ctx.fill(midDots);
+    ctx.fillStyle = rgba(0.16);
+    ctx.fill(faintDots);
+  } else {
+    // grid
+    const front = new Path2D(), back = new Path2D();
+    const seg = (a, b) => { const p = a[2] + b[2] > 0 ? front : back; p.moveTo(a[0], a[1]); p.lineTo(b[0], b[1]); };
+    for (let i = 0; i <= 34; i++) {
+      const v = -0.97 + (i / 34) * 1.94;
+      let prev = P(-Math.PI, v);
+      for (let j = 1; j <= 80; j++) { const cur = P(-Math.PI + (j / 80) * TAU, v); seg(prev, cur); prev = cur; }
+    }
+    for (let i = 0; i < 40; i++) {
+      const u = -Math.PI + (i / 40) * TAU;
+      let prev = P(u, -1);
+      for (let j = 1; j <= 48; j++) { const cur = P(u, -1 + (j / 48) * 2); seg(prev, cur); prev = cur; }
+    }
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = rgba(0.1);
+    ctx.stroke(back);
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = light(0.38 + open * 0.2);
+    ctx.stroke(front);
   }
-  for (let i = 0; i < 40; i++) {
-    const u = -Math.PI + (i / 40) * TAU;
-    let prev = P(u, -1);
-    for (let j = 1; j <= 48; j++) { const cur = P(u, -1 + (j / 48) * 2); seg(prev, cur); prev = cur; }
-  }
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = rgba(0.1);
-  ctx.stroke(back);
-  ctx.lineWidth = 1.2;
-  ctx.strokeStyle = light(0.38 + open * 0.2);
-  ctx.stroke(front);
 
   // plexus
   const pts = ANCHORS.map((a) => P(a.u, a.v));
@@ -314,8 +343,10 @@ function drawFace(c, t, rgba, light, open, blink, glance) {
     links.lineTo(pts[j][0], pts[j][1]);
   }
   ctx.lineWidth = 1;
-  ctx.strokeStyle = violet(0.38 + open * 0.2);
+  ctx.strokeStyle = violet((dotted ? 0.5 : 0.38) + open * 0.2);
+  if (dotted) ctx.setLineDash([]);  // the web itself stays as fine lines
   ctx.stroke(links);
+  if (dotted) ctx.setLineDash([0.1, 5.5]);
   const bright = new Path2D(), dim = new Path2D();
   ANCHORS.forEach((a, i) => {
     const [x, y, z] = pts[i];
@@ -344,8 +375,14 @@ function drawFace(c, t, rgba, light, open, blink, glance) {
     };
     const brow = path([...range(16, (k) => browAt(k, 0.032)), ...range(16, (k) => browAt(1 - k, 0))]);
     brow.closePath();
-    ctx.fillStyle = light(0.75);
-    ctx.fill(brow);
+    if (dotted) {
+      ctx.lineWidth = 3.2;
+      ctx.strokeStyle = light(0.9);
+      ctx.stroke(brow);
+    } else {
+      ctx.fillStyle = light(0.75);
+      ctx.fill(brow);
+    }
   }
 
   // eyes: lifted almond shape, winged liner, glowing iris that glances around
@@ -414,7 +451,7 @@ function drawFace(c, t, rgba, light, open, blink, glance) {
   for (const lip of [[...topLip, ...upperLine], [...lowerLine, ...bottomLip]]) {
     const p = path(lip);
     p.closePath();
-    ctx.fillStyle = rgba(0.38);
+    ctx.fillStyle = rgba(dotted ? 0.1 : 0.38);
     ctx.fill(p);
     ctx.lineWidth = 2.4;
     ctx.strokeStyle = light(0.85);
@@ -427,6 +464,20 @@ function drawFace(c, t, rgba, light, open, blink, glance) {
   ctx.lineWidth = 1.6;
   ctx.strokeStyle = light(0.5);
   ctx.stroke(hairFront);
+
+  if (dotted) {                                   // the glowing nose is the focal point of this style
+    const [nx, ny, nz] = P(0, 0.37);
+    if (nz > 0) {
+      const g = ctx.createRadialGradient(nx, ny, 0, nx, ny, 46);
+      g.addColorStop(0, light(0.9));
+      g.addColorStop(0.4, rgba(0.45));
+      g.addColorStop(1, rgba(0));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(nx, ny, 46, 0, TAU);
+      ctx.fill();
+    }
+  }
 
   // highlighter: cheekbones and nose bridge; earrings
   for (const [u, v, phase, size] of [[-0.5, 0.12, 1.7, 1], [0.5, 0.12, 3.1, 1], [0, 0.2, 0, 0.7], [-1.5, 0.36, 0.5, 0.6], [1.5, 0.36, 2.5, 0.6]]) {
@@ -443,6 +494,8 @@ function drawFace(c, t, rgba, light, open, blink, glance) {
     ctx.fill();
   }
   ctx.globalCompositeOperation = "source-over";
+  ctx.setLineDash([]);
+  ctx.lineCap = "butt";
 }
 
 // blink every few seconds
