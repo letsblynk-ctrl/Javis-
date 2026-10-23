@@ -125,23 +125,23 @@ const bump = (u, v, u0, v0, su, sv) => Math.exp(-(((u - u0) / su) ** 2) - (((v -
 
 // u: angle around the head (0 = facing us), v: -1 crown ... 1 chin. Returns [x, y, z] in head units.
 function headPoint(u, v, mouth) {
+  // heart-shaped face: full cranium, high cheekbones, slim jaw, delicate chin
   let w;
-  if (v < -0.15) w = 0.78 * Math.sqrt(Math.max(0, 1 - ((v + 0.15) / 0.85) ** 2));
-  else w = 0.79 - 0.04 * smooth(-0.15, 0.3, v) - 0.33 * smooth(0.38, 1.1, v) ** 1.4;
+  if (v < -0.15) w = 0.76 * Math.sqrt(Math.max(0, 1 - ((v + 0.15) / 0.85) ** 2));
+  else w = 0.76 + 0.02 * bump(0, v, 0, 0.12, 1, 0.18) - 0.44 * smooth(0.22, 1.08, v) ** 1.2;
+  if (v > 0.84) w *= Math.sqrt(Math.max(0, 1 - ((v - 0.84) / 0.22) ** 2));
   const front = Math.max(0, Math.cos(u));
-  let x = w * 1.07 * Math.sin(u);
+  let x = w * 1.04 * Math.sin(u);
   let z = w * 1.12 * Math.cos(u);
   let y = v * 1.25;
 
-  // features, mostly on the front
-  z += 0.24 * Math.exp(-((u / 0.17) ** 2)) * smooth(0.0, 0.33, v) * (1 - smooth(0.36, 0.44, v));  // nose
-  z -= 0.09 * (bump(u, v, -0.34, 0.0, 0.15, 0.09) + bump(u, v, 0.34, 0.0, 0.15, 0.09));           // eye sockets
-  z += 0.05 * Math.exp(-(((v + 0.1) / 0.06) ** 2)) * Math.exp(-((u / 0.65) ** 2));               // brow
-  z += 0.04 * (bump(u, v, -0.5, 0.22, 0.2, 0.12) + bump(u, v, 0.5, 0.22, 0.2, 0.12));            // cheekbones
-  z += 0.035 * bump(u, v, 0, 0.53, 0.26, 0.04) + 0.03 * bump(u, v, 0, 0.66, 0.24, 0.04);          // lips
-  z += 0.05 * bump(u, v, 0, 0.92, 0.3, 0.08);                                                       // chin
-  // open mouth: everything below the lips drops a little (jaw)
-  y += mouth * 0.12 * smooth(0.596, 0.61, v) * Math.exp(-((u / 0.9) ** 2)) * front;
+  z += 0.19 * Math.exp(-((u / 0.12) ** 2)) * smooth(-0.02, 0.33, v) * (1 - smooth(0.36, 0.43, v));  // slim nose
+  z -= 0.08 * (bump(u, v, -0.33, 0.0, 0.14, 0.08) + bump(u, v, 0.33, 0.0, 0.14, 0.08));           // eye sockets
+  z += 0.025 * Math.exp(-(((v + 0.12) / 0.05) ** 2)) * Math.exp(-((u / 0.6) ** 2));              // soft brow bone
+  z += 0.065 * (bump(u, v, -0.5, 0.14, 0.18, 0.1) + bump(u, v, 0.5, 0.14, 0.18, 0.1));            // high cheekbones
+  z += 0.05 * bump(u, v, 0, 0.555, 0.22, 0.035) + 0.055 * bump(u, v, 0, 0.65, 0.2, 0.045);         // full lips
+  z += 0.04 * bump(u, v, 0, 0.93, 0.22, 0.07);                                                      // chin
+  y += mouth * 0.11 * smooth(0.596, 0.61, v) * Math.exp(-((u / 0.9) ** 2)) * front;                // jaw
   return [x, y, z];
 }
 
@@ -159,43 +159,104 @@ for (let i = 0; i < ANCHORS.length; i++) {
   }
 }
 
-function drawFace(c, t, rgba, light, open, blink) {
-  const S = 228;  // head units -> canvas units
-  const yaw = 0.3 * Math.sin(t * 0.33) + 0.07 * Math.sin(t * 0.81);
-  const pitch = -0.06 + 0.05 * Math.sin(t * 0.27);
+// Long wavy hair with a middle part: each strand runs over the scalp, then falls past the shoulders.
+const STRANDS = Array.from({ length: 84 }, (_, i) => {
+  const side = i % 2 ? 1 : -1;
+  return {
+    side,
+    depth: Math.random(),                 // 0 = framing the face, 1 = far back
+    phase: Math.random() * TAU,
+    len: 1.7 + Math.random() * 0.5,       // where the ends fall (in v units)
+    spread: 0.25 + Math.random() * 0.4,
+    part: 0.02 + Math.random() * 0.05,
+  };
+});
+
+function hairPoint(h, s, t) {
+  const uEnd = h.side * (1.05 + h.depth * 1.3);
+  if (s < 0.3) {                          // over the scalp from the parting line
+    const k = s / 0.3;
+    const v0 = -0.62 - h.depth * 0.36;    // parting runs from the hairline back over the crown
+    const v = v0 + k * (-0.35 - v0);
+    const [x, y, z] = headPoint(h.side * h.part + (uEnd - h.side * h.part) * k ** 0.8, v, 0);
+    const puff = 1.06 + 0.05 * Math.sin(k * Math.PI);  // volume
+    return [x * puff, y - 0.03, z * puff];
+  }
+  const [x0, y0, z0] = headPoint(uEnd, -0.35, 0);
+  const k = (s - 0.3) / 0.7;
+  const wave = (0.07 + 0.11 * k) * Math.sin(k * 6 + h.phase * 0.3 + t * 0.8) * k;  // big, mostly in-phase waves
+  return [
+    x0 * 1.08 + h.side * (h.spread * k ** 1.3 + 0.1 * Math.sin(k * Math.PI)) + wave,
+    y0 + k * (h.len + 0.35) * 1.25,
+    z0 * 1.05 - 0.2 * k,
+  ];
+}
+
+function drawFace(c, t, rgba, light, open, blink, glance) {
+  const S = 196;  // head units -> canvas units
+  const yaw = 0.26 * Math.sin(t * 0.33) + 0.06 * Math.sin(t * 0.81);
+  const pitch = -0.05 + 0.04 * Math.sin(t * 0.27);
+  const roll = 0.04 * Math.sin(t * 0.21);
   const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const cr = Math.cos(roll), sr = Math.sin(roll);
+  const top = c - 70;  // head sits a little higher to leave room for hair and neck
   const project = ([x, y, z]) => {
     const x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
     const y2 = y * cp - z1 * sp, z2 = y * sp + z1 * cp;
+    const x3 = x1 * cr - y2 * sr, y3 = x1 * sr + y2 * cr;
     const f = 1 / (1 - z2 * 0.12);
-    return [c + x1 * S * f, c + (y2 + 0.04) * S * f, z2];
+    return [c + x3 * S * f, top + y3 * S * f, z2];
   };
   const P = (u, v) => project(headPoint(u, v, open));
   const range = (n, f) => Array.from({ length: n + 1 }, (_, k) => f(k / n));
   const violet = (a) => `rgba(175,95,255,${a})`;
+  const path = (pts) => { const p = new Path2D(); pts.forEach(([x, y], i) => (i ? p.lineTo(x, y) : p.moveTo(x, y))); return p; };
+  const curve = (pts, width, alpha, close) => {
+    const p = path(pts);
+    if (close) p.closePath();
+    ctx.lineWidth = width;
+    ctx.strokeStyle = light(alpha);
+    ctx.stroke(p);
+  };
 
-  // HUD corner brackets around the head
+  // HUD corner brackets
   ctx.strokeStyle = rgba(0.85);
   ctx.lineWidth = 7;
-  for (const [sx_, sy_] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-    const x = c + sx_ * 300, y = c + sy_ * 300;
+  for (const [bx, by] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const x = c + bx * 310, y = c + by * 310;
     ctx.beginPath();
-    ctx.moveTo(x, y - sy_ * 80);
+    ctx.moveTo(x, y - by * 80);
     ctx.lineTo(x, y);
-    ctx.lineTo(x - sx_ * 80, y);
+    ctx.lineTo(x - bx * 80, y);
     ctx.stroke();
   }
 
   // halo
-  const halo = ctx.createRadialGradient(c, c, 40, c, c, 300);
+  const halo = ctx.createRadialGradient(c, top, 40, c, top, 330);
   halo.addColorStop(0, rgba(0.32 + open * 0.2));
   halo.addColorStop(1, rgba(0));
   ctx.fillStyle = halo;
-  ctx.beginPath();
-  ctx.arc(c, c, 300, 0, TAU);
-  ctx.fill();
+  ctx.fillRect(c - 340, top - 340, 680, 680);
 
-  // silhouette: leftmost / rightmost projected point of each ring
+  ctx.globalCompositeOperation = "lighter";
+
+  // hair behind the head
+  const hairBack = new Path2D(), hairFront = new Path2D();
+  for (const h of STRANDS) {
+    const pts = range(36, (s) => project(hairPoint(h, s, t)));
+    const target = h.depth > 0.45 ? hairBack : hairFront;
+    pts.forEach(([x, y], i) => (i ? target.lineTo(x, y) : target.moveTo(x, y)));
+  }
+  ctx.lineWidth = 1.4;
+  ctx.strokeStyle = violet(0.32);
+  ctx.stroke(hairBack);
+
+  // neck
+  for (const side of [-1, 1]) {
+    curve(range(12, (k) => project([side * (0.3 + 0.06 * k ** 2), (0.78 + k * 0.75) * 1.25, 0.12 - 0.1 * k])), 2, 0.45);
+  }
+
+  // silhouette and translucent body
   const left = [], right = [];
   for (let i = 0; i <= 32; i++) {
     const v = -1 + (i / 32) * 2;
@@ -208,149 +269,170 @@ function drawFace(c, t, rgba, light, open, blink) {
     left.push(lo);
     right.push(hi);
   }
-  const silhouette = new Path2D();
-  [...left, ...right.reverse()].forEach(([x, y], i) => (i ? silhouette.lineTo(x, y) : silhouette.moveTo(x, y)));
+  const silhouette = path([...left, ...right.reverse()]);
   silhouette.closePath();
-
-  // translucent glowing body
-  ctx.globalCompositeOperation = "lighter";
-  const body = ctx.createRadialGradient(c, c - 20, 20, c, c, 260);
+  const body = ctx.createRadialGradient(c, top - 20, 20, c, top, 260);
   body.addColorStop(0, rgba(0.32));
   body.addColorStop(0.75, rgba(0.16));
   body.addColorStop(1, rgba(0.3));
   ctx.fillStyle = body;
   ctx.fill(silhouette);
-
-  // scanlines across the head
   ctx.save();
   ctx.clip(silhouette);
   ctx.globalCompositeOperation = "source-over";
   ctx.fillStyle = "rgba(0,0,0,0.25)";
-  for (let y = c - 300; y < c + 300; y += 6) ctx.fillRect(c - 300, y, 600, 2);
+  for (let y = top - 300; y < top + 300; y += 6) ctx.fillRect(c - 300, y, 600, 2);
   ctx.restore();
+  ctx.globalCompositeOperation = "lighter";
 
-  // dense grid
+  // grid
   const front = new Path2D(), back = new Path2D();
-  const seg = (a, b) => { const path = a[2] + b[2] > 0 ? front : back; path.moveTo(a[0], a[1]); path.lineTo(b[0], b[1]); };
+  const seg = (a, b) => { const p = a[2] + b[2] > 0 ? front : back; p.moveTo(a[0], a[1]); p.lineTo(b[0], b[1]); };
   for (let i = 0; i <= 34; i++) {
     const v = -0.97 + (i / 34) * 1.94;
     let prev = P(-Math.PI, v);
-    for (let j = 1; j <= 80; j++) {
-      const cur = P(-Math.PI + (j / 80) * TAU, v);
-      seg(prev, cur);
-      prev = cur;
-    }
+    for (let j = 1; j <= 80; j++) { const cur = P(-Math.PI + (j / 80) * TAU, v); seg(prev, cur); prev = cur; }
   }
   for (let i = 0; i < 40; i++) {
     const u = -Math.PI + (i / 40) * TAU;
     let prev = P(u, -1);
-    for (let j = 1; j <= 48; j++) {
-      const cur = P(u, -1 + (j / 48) * 2);
-      seg(prev, cur);
-      prev = cur;
-    }
+    for (let j = 1; j <= 48; j++) { const cur = P(u, -1 + (j / 48) * 2); seg(prev, cur); prev = cur; }
   }
-  for (const side of [-1, 1]) {                    // ears
-    for (const depth of [0.14, 0.08]) {
-      let prev = null;
-      for (let j = 0; j <= 24; j++) {
-        const k = j / 24, v = -0.12 + k * 0.5;
-        const [x, y, z] = headPoint(side * 1.52, v, 0);
-        const out = depth * Math.sin(k * Math.PI) ** 0.8;
-        const cur = project([x + side * out, y, z - out * 0.4]);
-        if (prev) seg(prev, cur);
-        prev = cur;
-      }
-    }
-  }
-  ctx.globalCompositeOperation = "lighter";
   ctx.lineWidth = 1;
   ctx.strokeStyle = rgba(0.1);
   ctx.stroke(back);
   ctx.lineWidth = 1.2;
-  ctx.strokeStyle = light(0.42 + open * 0.2);
+  ctx.strokeStyle = light(0.38 + open * 0.2);
   ctx.stroke(front);
 
-  // plexus: twinkling points joined by thin violet lines
+  // plexus
   const pts = ANCHORS.map((a) => P(a.u, a.v));
-  ctx.beginPath();
+  const links = new Path2D();
   for (const [i, j] of LINKS) {
     if (pts[i][2] < 0.05 || pts[j][2] < 0.05) continue;
-    ctx.moveTo(pts[i][0], pts[i][1]);
-    ctx.lineTo(pts[j][0], pts[j][1]);
+    links.moveTo(pts[i][0], pts[i][1]);
+    links.lineTo(pts[j][0], pts[j][1]);
   }
   ctx.lineWidth = 1;
-  ctx.strokeStyle = violet(0.42 + open * 0.2);
-  ctx.stroke();
+  ctx.strokeStyle = violet(0.38 + open * 0.2);
+  ctx.stroke(links);
   const bright = new Path2D(), dim = new Path2D();
   ANCHORS.forEach((a, i) => {
     const [x, y, z] = pts[i];
     if (z < 0) return;
-    const tw = Math.sin(t * 2.4 + a.seed);
-    (tw > 0.3 ? bright : dim).rect(x - 2, y - 2, 4, 4);
+    (Math.sin(t * 2.4 + a.seed) > 0.3 ? bright : dim).rect(x - 2, y - 2, 4, 4);
   });
   ctx.fillStyle = light(0.95);
   ctx.fill(bright);
   ctx.fillStyle = rgba(0.55);
   ctx.fill(dim);
 
-  const curve = (pts_, width, alpha, close) => {
-    ctx.beginPath();
-    pts_.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-    if (close) ctx.closePath();
-    ctx.lineWidth = width;
-    ctx.strokeStyle = light(alpha);
-    ctx.stroke();
-  };
-
-  // bright face outline
+  // face outline (heart shape)
   curve([
-    ...range(24, (k) => P(-0.95, 0.9 - k * 1.45)),
-    ...range(24, (k) => P(-0.95 + k * 1.9, -0.55 - Math.sin(k * Math.PI) * 0.1)),
-    ...range(24, (k) => P(0.95, -0.55 + k * 1.45)),
-    ...range(16, (k) => P(0.95 - k * 1.9, 0.9 + Math.sin(k * Math.PI) * 0.06)),
-  ], 4, 0.9, true);
+    ...range(24, (k) => P(-0.92, 0.82 - k * 1.38)),
+    ...range(24, (k) => P(-0.92 + k * 1.84, -0.56 - Math.sin(k * Math.PI) * 0.1)),
+    ...range(24, (k) => P(0.92, -0.56 + k * 1.38)),
+    ...range(16, (k) => P(0.92 - k * 1.84, 0.82 + Math.sin(k * Math.PI) * 0.13)),
+  ], 3.5, 0.85, true);
 
-  // closed almond eyes with a lid crease, blinking
+  // brows: strong, defined, lifted arch (filled)
   for (const side of [-1, 1]) {
-    const u0 = side * 0.34, lid = 0.05 * (1 - blink) + 0.006;
-    const upper = range(18, (k) => P(u0 - 0.15 + k * 0.3, 0.0 - Math.sin(k * Math.PI) * lid));
-    const lower = range(18, (k) => P(u0 + 0.15 - k * 0.3, 0.0 + Math.sin(k * Math.PI) * lid * 0.6));
-    curve([...upper, ...lower], 3.2, 0.95, true);
-    curve(range(14, (k) => P(u0 - 0.12 + k * 0.24, -0.06 - Math.sin(k * Math.PI) * 0.025)), 1.6, 0.45);
+    const browAt = (k, thick) => {           // k: 0 inner .. 1 tail
+      const u = side * (0.13 + k * 0.42);
+      const v = -0.12 - 0.075 * Math.sin(Math.min(1, k / 0.72) * Math.PI / 2) + (k > 0.72 ? (k - 0.72) * 0.16 : 0);
+      return P(u, v - thick * (1 - k * 0.75));
+    };
+    const brow = path([...range(16, (k) => browAt(k, 0.032)), ...range(16, (k) => browAt(1 - k, 0))]);
+    brow.closePath();
+    ctx.fillStyle = light(0.75);
+    ctx.fill(brow);
   }
 
-  // nose: bright arch over the tip with the nostril base
-  curve([
-    ...range(16, (k) => P(-0.1 + k * 0.2, 0.43 - Math.sin(k * Math.PI) * 0.11)),
-    ...range(8, (k) => P(0.1 - k * 0.2, 0.43 + Math.sin(k * Math.PI) * 0.012)),
-  ], 3.5, 0.95, true);
-  curve(range(10, (k) => P(-0.035, 0.12 + k * 0.2)), 1.4, 0.35);
+  // eyes: lifted almond shape, winged liner, glowing iris that glances around
+  for (const side of [-1, 1]) {
+    const u0 = side * 0.33, lid = (1 - blink);
+    const inner = [u0 - side * 0.145, 0.012], outer = [u0 + side * 0.155, -0.028];
+    const lidAt = (k, sign, h) => {
+      const u = inner[0] + (outer[0] - inner[0]) * k;
+      const v = inner[1] + (outer[1] - inner[1]) * k + sign * h * Math.sin(k * Math.PI) ** 0.9;
+      return P(u, v);
+    };
+    const upper = range(18, (k) => lidAt(k, -1, 0.06 * lid + 0.004));
+    const lower = range(18, (k) => lidAt(1 - k, 1, 0.026 * lid + 0.002));
+    const eye = path([...upper, ...lower]);
+    eye.closePath();
+    if (lid > 0.2) {
+      ctx.save();
+      ctx.clip(eye);
+      const [ix, iy] = P(u0 + glance * 0.05 + side * 0.005, -0.012);
+      const ir = 0.05 * S;
+      const iris = ctx.createRadialGradient(ix, iy, 0, ix, iy, ir);
+      iris.addColorStop(0, "rgba(20,0,12,0.9)");
+      iris.addColorStop(0.35, light(0.9));
+      iris.addColorStop(1, rgba(0.25));
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = iris;
+      ctx.beginPath();
+      ctx.arc(ix, iy, ir, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.fillRect(ix - ir * 0.35, iy - ir * 0.45, ir * 0.22, ir * 0.22);  // catchlight
+      ctx.restore();
+      ctx.globalCompositeOperation = "lighter";
+    }
+    curve(upper, 4, 0.95);
+    curve(lower, 1.6, 0.6);
+    // winged liner from the outer corner
+    const wingStart = P(outer[0], outer[1] - 0.004);
+    const wingEnd = P(outer[0] + side * 0.085, outer[1] - 0.06);
+    curve([wingStart, wingEnd], 4, 0.95);
+    curve(range(14, (k) => P(u0 - side * 0.1 + side * k * 0.22, -0.065 - Math.sin(k * Math.PI) * 0.02)), 1.2, 0.35);
+  }
 
-  // lips: cupid's bow on top, full lower lip; they part when Jarvis speaks
-  const topLip = range(22, (k) => {
-    const u = -0.22 + k * 0.44;
-    return P(u, 0.555 - 0.03 * Math.sin(k * Math.PI) + 0.014 * Math.exp(-((u / 0.05) ** 2)));
+  // nose: slim bridge, small rounded tip
+  curve(range(10, (k) => P(-0.03, 0.08 + k * 0.24)), 1.4, 0.4);
+  curve(range(10, (k) => P(0.03, 0.08 + k * 0.24)), 1.4, 0.25);
+  curve([
+    ...range(16, (k) => P(-0.075 + k * 0.15, 0.425 - Math.sin(k * Math.PI) * 0.08)),
+    ...range(8, (k) => P(0.075 - k * 0.15, 0.425 + Math.sin(k * Math.PI) * 0.01)),
+  ], 3, 0.9, true);
+
+  // full lips with a defined cupid's bow, glossy; they part when Jarvis speaks
+  const topLip = range(24, (k) => {
+    const u = -0.19 + k * 0.38;
+    return P(u, 0.56 - 0.036 * Math.sin(k * Math.PI) ** 0.7 + 0.018 * Math.exp(-((u / 0.045) ** 2)));
   });
-  const upperLine = range(22, (k) => P(0.22 - k * 0.44, 0.594 + 0.006 * Math.sin(k * Math.PI)));
-  const lowerLine = range(22, (k) => P(-0.22 + k * 0.44, 0.612 - 0.004 * Math.sin(k * Math.PI)));
-  const bottomLip = range(22, (k) => P(0.22 - k * 0.44, 0.612 + 0.05 * Math.sin(k * Math.PI)));
+  const upperLine = range(24, (k) => P(0.19 - k * 0.38, 0.594 + 0.004 * Math.sin(k * Math.PI)));
+  const lowerLine = range(24, (k) => P(-0.19 + k * 0.38, 0.612));
+  const bottomLip = range(24, (k) => P(0.19 - k * 0.38, 0.612 + 0.066 * Math.sin(k * Math.PI) ** 0.8));
   if (open > 0.04) {
     ctx.globalCompositeOperation = "source-over";
-    ctx.fillStyle = "rgba(10,0,8,0.75)";
-    ctx.beginPath();
-    [...upperLine, ...lowerLine].forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-    ctx.fill();
+    ctx.fillStyle = "rgba(12,0,8,0.8)";
+    ctx.fill(path([...upperLine, ...lowerLine]));
     ctx.globalCompositeOperation = "lighter";
   }
-  curve([...topLip, ...upperLine], 2.6, 0.85, true);
-  curve([...lowerLine, ...bottomLip], 2.6, 0.85, true);
+  for (const lip of [[...topLip, ...upperLine], [...lowerLine, ...bottomLip]]) {
+    const p = path(lip);
+    p.closePath();
+    ctx.fillStyle = rgba(0.38);
+    ctx.fill(p);
+    ctx.lineWidth = 2.4;
+    ctx.strokeStyle = light(0.85);
+    ctx.stroke(p);
+  }
+  const [gx, gy, gz] = P(0.06, 0.635);             // gloss
+  if (gz > 0) { ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.fillRect(gx - 6, gy - 1.5, 12, 3); }
 
-  // glowing nodes: forehead and cheeks
-  for (const [u, v, phase] of [[0, -0.45, 0], [-0.46, 0.24, 1.7], [0.42, 0.3, 3.1]]) {
+  // hair in front, framing the face
+  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = light(0.5);
+  ctx.stroke(hairFront);
+
+  // highlighter: cheekbones and nose bridge; earrings
+  for (const [u, v, phase, size] of [[-0.5, 0.12, 1.7, 1], [0.5, 0.12, 3.1, 1], [0, 0.2, 0, 0.7], [-1.5, 0.36, 0.5, 0.6], [1.5, 0.36, 2.5, 0.6]]) {
     const [x, y, z] = P(u, v);
-    if (z < 0) continue;
-    const r = 3.5 + 1.5 * Math.sin(t * 2.2 + phase) + open * 2;
+    if (z < -0.2) continue;
+    const r = (3.5 + 1.5 * Math.sin(t * 2.2 + phase) + open * 2) * size;
     const dot = ctx.createRadialGradient(x, y, 0, x, y, r * 3);
     dot.addColorStop(0, "rgba(255,255,255,1)");
     dot.addColorStop(0.3, light(0.8));
@@ -365,6 +447,13 @@ function drawFace(c, t, rgba, light, open, blink) {
 
 // blink every few seconds
 let blinkAt = performance.now() + 2500;
+let glanceAt = performance.now() + 5000, glanceDir = 1;
+function glanceAmount(now) {
+  if (now > glanceAt + 1600) { glanceAt = now + 4000 + Math.random() * 5000; glanceDir = Math.random() < 0.5 ? -1 : 1; }
+  const k = (now - glanceAt) / 1600;
+  return k < 0 || k > 1 ? 0 : glanceDir * Math.min(1, Math.sin(k * Math.PI) * 1.6);
+}
+
 function blinkAmount(now) {
   if (now > blinkAt + 180) blinkAt = now + 2500 + Math.random() * 3500;
   const k = (now - blinkAt) / 180;
@@ -467,7 +556,7 @@ function drawReactor(now) {
   }
 
   if (config.avatar === "face") {
-    drawFace(c, t, rgba, light, state === "speaking" ? Math.min(1, level * 1.4) : 0, blinkAmount(now));
+    drawFace(c, t, rgba, light, state === "speaking" ? Math.min(1, level * 1.4) : 0, blinkAmount(now), glanceAmount(now));
     requestAnimationFrame(drawReactor);
     return;
   }
