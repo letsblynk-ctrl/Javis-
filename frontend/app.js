@@ -627,7 +627,30 @@ function drawReactor(now) {
   ctx.fillStyle = body;
   ctx.fillRect(c - Rs, c - Rs, Rs * 2, Rs * 2);
   const breathe = 1 + level * 0.25 + Math.sin(t * 1.5) * 0.03;
-  for (const k of [-1, 1]) {
+  const orb = config.avatar === "orb";
+  if (orb) {
+    // glowing orb: overlapping translucent lenses that slowly turn and breathe (no wireframe)
+    ctx.save();
+    ctx.translate(c, c);
+    ctx.rotate(Math.sin(t * 0.4) * 0.25);
+    const lens = (x, y, rx, ry, fill, edge) => {
+      ctx.beginPath();
+      ctx.ellipse(x, y, rx, ry, 0, 0, TAU);
+      ctx.fillStyle = rgba(fill);
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = light(edge);
+      ctx.stroke();
+    };
+    const sway = Math.sin(t * 0.9) * 0.04;
+    for (const k of [-1, 1]) {
+      lens(0, k * Rs * (0.42 + sway), Rs * 0.52 * breathe, Rs * 0.5, 0.2, 0.4);           // big top / bottom lenses
+      lens(k * Rs * (0.4 - sway), 0, Rs * 0.55, Rs * 0.72 * breathe, 0.12, 0.25);        // side lenses
+      lens(k * Rs * 0.32, k * Rs * 0.32, Rs * 0.38, Rs * 0.38, 0.08, 0.18);               // diagonal lenses
+      lens(0, k * Rs * 0.2, Rs * 0.13 * breathe, Rs * 0.2, 0.45 + level * 0.3, 0.7);      // bright inner lobes
+    }
+    ctx.restore();
+  } else for (const k of [-1, 1]) {
     ctx.fillStyle = rgba(0.3);
     ctx.strokeStyle = light(0.35);
     ctx.lineWidth = 2;
@@ -661,30 +684,33 @@ function drawReactor(now) {
 
   // geodesic wireframe
   ctx.globalCompositeOperation = "lighter";
-  const ry = spin, rx = 0.35 + Math.sin(t * 0.4) * 0.12;
-  const cy = Math.cos(ry), sy = Math.sin(ry), cx = Math.cos(rx), sx = Math.sin(rx);
-  const proj = SPHERE.verts.map(([x, y, z]) => {
-    const x1 = x * cy - z * sy, z1 = x * sy + z * cy;
-    const y2 = y * cx - z1 * sx, z2 = y * sx + z1 * cx;
-    return [c + x1 * Rs, c + y2 * Rs, z2];
-  });
-  ctx.lineWidth = 1.6;
-  for (const front of [false, true]) {
-    ctx.strokeStyle = front ? light(0.75 + level * 0.25) : rgba(0.18);
-    ctx.beginPath();
-    for (const [a, bIdx] of SPHERE.edges) {
-      const pa = proj[a], pb = proj[bIdx];
-      if ((pa[2] + pb[2] > 0) !== front) continue;
-      ctx.moveTo(pa[0], pa[1]);
-      ctx.lineTo(pb[0], pb[1]);
+  if (!orb) {
+    const ry = spin, rx = 0.35 + Math.sin(t * 0.4) * 0.12;
+    const cy = Math.cos(ry), sy = Math.sin(ry), cx = Math.cos(rx), sx = Math.sin(rx);
+    const proj = SPHERE.verts.map(([x, y, z]) => {
+      const x1 = x * cy - z * sy, z1 = x * sy + z * cy;
+      const y2 = y * cx - z1 * sx, z2 = y * sx + z1 * cx;
+      return [c + x1 * Rs, c + y2 * Rs, z2];
+    });
+    ctx.lineWidth = 1.6;
+    for (const front of [false, true]) {
+      ctx.strokeStyle = front ? light(0.75 + level * 0.25) : rgba(0.18);
+      ctx.beginPath();
+      for (const [a, bIdx] of SPHERE.edges) {
+        const pa = proj[a], pb = proj[bIdx];
+        if ((pa[2] + pb[2] > 0) !== front) continue;
+        ctx.moveTo(pa[0], pa[1]);
+        ctx.lineTo(pb[0], pb[1]);
+      }
+      ctx.stroke();
     }
-    ctx.stroke();
   }
 
   // sphere rim
   ctx.globalCompositeOperation = "source-over";
   // (soft halo via wide translucent strokes - shadowBlur is expensive every frame)
-  for (const [w, a] of [[22, 0.12], [12, 0.25], [5, 0.95]]) {
+  const rim = orb ? [[20, 0.1], [9, 0.3], [3, 0.55]] : [[22, 0.12], [12, 0.25], [5, 0.95]];
+  for (const [w, a] of rim) {
     ctx.strokeStyle = a > 0.5 ? light(a) : rgba(a);
     ctx.lineWidth = w;
     ctx.beginPath();

@@ -87,7 +87,7 @@ speaking the mic pauses so he doesn't hear himself.
 | `about_me` | Who you are and what you work on; Jarvis uses it to give relevant answers. |
 | `profile_file` | A longer Markdown profile (default `profile.md`, never uploaded): how you like to work, people, projects, goals. Jarvis follows it. |
 | `web_search` | `true` lets Jarvis search the web ($10 per 1,000 searches on top of tokens). `false` = he opens Google instead. |
-| `avatar` | `sphere` (geodesic sphere) or `face` (wireframe head that talks). |
+| `avatar` | `sphere` (geodesic wireframe sphere), `orb` (glowing orb of overlapping lenses) or `face` (wireframe head that talks). |
 | `face_style` | Look of the face: `hologram` (glowing grid) or `particles` (hollow point cloud with a plexus web). |
 | `cockpit` | Team board connection: `supabase_url`, `anon_key`, `team_code`, `who`, `web_url`. Leave `team_code` empty to switch it off. |
 | `reactor_color` | Color of the arc reactor in the HUD: `cyan` (default) or `pink`. |
